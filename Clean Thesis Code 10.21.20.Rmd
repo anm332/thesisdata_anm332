@@ -1,0 +1,2289 @@
+---
+title: "2021 Clean Thesis Code"
+author: "Amanda Moeller"
+date: "10/22/2020"
+output: html_document
+---
+
+```{r setup, include=FALSE}
+knitr::opts_chunk$set(echo = TRUE)
+```
+
+Load packages
+```{r}
+library(ggplot2)
+library(tidyverse)
+library(corrplot)
+library(apaTables)
+library(psych)
+library(tidyr)
+```
+
+Read in RME data
+```{r}
+rme1 <- read.csv(file="/Users/amandamoeller/Desktop/Thesis Data/RME Data/Fall 2016.csv", header=T)
+rme2 <- read.csv(file="/Users/amandamoeller/Desktop/Thesis Data/RME Data/Fall 2017.csv",header=T)
+rme3 <- read.csv(file="/Users/amandamoeller/Desktop/Thesis Data/RME Data/group spring 2019.csv", header=T)
+rme4 <- read.csv(file="/Users/amandamoeller/Desktop/Thesis Data/RME Data/RME 2007.csv", header=T)
+rme5 <- read.csv(file="/Users/amandamoeller/Desktop/Thesis Data/RME Data/Spring 2017.csv", header=T)
+rme6 <- read.csv(file="/Users/amandamoeller/Desktop/Thesis Data/RME Data/Spring 2018.csv", header=T)
+rme7 <- read.csv(file="/Users/amandamoeller/Desktop/Thesis Data/RME Data/Spring 2019.csv", header=T)
+rme8 <- read.csv(file="/Users/amandamoeller/Desktop/Thesis Data/RME Data/Summer 2019.csv", header=T)
+```
+
+Confirm RME dataframes have identical variables
+```{r}
+ # Select the relevant columns of the different dataframes
+library(dplyr)
+rme.names <- names(rme1); rme.names
+rme1v2 <- rme1; head(rme1v2); tail(rme1v2)
+rme2v2 <- select(rme2,matches(rme.names)) ; head(rme2v2); tail(rme2v2)
+rme3v2 <- select(rme3,matches(rme.names)) ; head(rme3v2); tail(rme3v2)
+rme4v2 <- select(rme4,matches(rme.names)) ; head(rme4v2); tail(rme4v2)
+rme5v2 <- select(rme5,matches(rme.names)) ; head(rme5v2); tail(rme5v2)
+rme6v2 <- select(rme6,matches(rme.names)) ; head(rme6v2); tail(rme6v2)
+rme7v2 <- select(rme7,matches(rme.names)) ; head(rme7v2); tail(rme7v2)
+rme8v2 <- select(rme8,matches(rme.names)) ; head(rme8v2); tail(rme8v2)
+
+RMEdata<-rbind(rme1,rme2v2)
+RMEdata<-rbind(RMEdata, rme3v2)
+# RMEdata<-rbind(RMEdata, rme4v2)       # failed to merge so I used rbind.fill below
+RMEdata<-rbind(RMEdata, rme5v2)
+RMEdata<-rbind(RMEdata, rme6v2)
+RMEdata<-rbind(RMEdata, rme7v2)
+RMEdata<-rbind(RMEdata, rme8v2)
+RMEdata<-plyr::rbind.fill(RMEdata, rme4v2)
+
+# sample size of RMEdata
+ss.RMEdata <- unique(RMEdata$Subject)
+length(ss.RMEdata) #n=198
+```
+
+Clean up RME data
+```{r}
+#Cutting all all cases but RME
+RMEdata_only<-RMEdata%>%dplyr::filter(`Procedure.Block.`=="RME")
+names(RMEdata)
+names(RMEdata_only)
+rm(list=setdiff(ls(), "RMEdata_only"))
+# sample size of RMEdata_only
+ss.RMEdata2 <- unique(RMEdata_only$Subject)
+length(ss.RMEdata2) #n=198 (consistent with last check)
+
+#cutting all participants without full RME data (36 items)
+temp<-RMEdata_only%>%group_by(Subject)%>%mutate(rownum=sum(Session))%>%ungroup(.)
+RMEdata_only<-temp[which(temp$rownum==36),]
+rm(temp)
+# sample size of RMEdata_only
+ss.RMEdata3 <- unique(RMEdata_only$Subject)
+length(ss.RMEdata3) #n=197 (only one less than last check)
+
+# Identify relevant columns
+names(RMEdata_only)
+df <- RMEdata_only #duplicate dataframe
+names(df)
+df <-df[,c(2, 3, 8, 14, 16,91:101, 112)]; names(df)
+RMEdata_only <- df
+names(RMEdata_only)
+length(RMEdata_only)
+
+#scoring total accuracy per participant
+RMEdata_only<-RMEdata_only%>%group_by(Subject)%>%mutate(TotalAcc=sum(RMEStim.ACC))%>%ungroup() # Total RME accuracy variable = "TotalAcc"
+RMEdata_only$TotalAccProp<-RMEdata_only$TotalAcc/36
+```
+
+Recode responses into dummy variables: 0 = did not endorse response, 1 = did endorse response
+```{r}
+RMEdata_only$resp1 <- NA # resp1 = a
+RMEdata_only$resp2 <- NA # resp2 = b
+RMEdata_only$resp3 <- NA # resp3 = c
+RMEdata_only$resp4 <- NA # resp4 = d
+RMEdata_only$resp1[RMEdata_only$RMEStim.RESP != 1 ] <- 0  # score of 0 if did not endorse
+RMEdata_only$resp1[RMEdata_only$RMEStim.RESP == 1 ] <- 1  # score of 1 if did endorse
+
+RMEdata_only$resp2[RMEdata_only$RMEStim.RESP != 2 ] <- 0  
+RMEdata_only$resp2[RMEdata_only$RMEStim.RESP == 2 ] <- 1 
+
+RMEdata_only$resp3[RMEdata_only$RMEStim.RESP != 3 ] <- 0  
+RMEdata_only$resp3[RMEdata_only$RMEStim.RESP == 3 ] <- 1 
+
+RMEdata_only$resp4[RMEdata_only$RMEStim.RESP != 4 ] <- 0  
+RMEdata_only$resp4[RMEdata_only$RMEStim.RESP == 4 ] <- 1 
+
+names(RMEdata_only)
+as.data.frame(RMEdata_only[,c(1,6:21)])
+
+# Upload RME items 
+rme.items <- read.csv(file="/Users/amandamoeller/Desktop/Thesis Data/RME Data/rme items (1).csv") 
+head(rme.items)
+
+rme.items2 <- rme.items %>% 
+  gather('resp1', 'resp2', 'resp3', 'resp4', key = "resp.num", value = "resp.value")
+head(rme.items2)
+rme.items2$resp.num <- dplyr::recode(rme.items2$resp.num, "resp1" = 1L, "resp2" = 2L, "resp3" = 3L, "resp4" = 4L)
+head(rme.items2)
+
+RMEdata_only2 <- merge(RMEdata_only, rme.items2, by.x = c("RMETrialList", "RMEStim.RESP"), by.y = c("Item", "resp.num"))
+
+names(RMEdata_only2)
+head(RMEdata_only2)
+tail(RMEdata_only2)
+names(RMEdata_only2)
+RMEdata_only2[,c(1,2,3, 8,9,13:23)] 
+
+# sample size of RMEdata_only2
+ss.RMEdata3 <- unique(RMEdata_only2$Subject)
+length(ss.RMEdata3) #n=197 (consistent with last check)
+```
+
+Read in CRT-A data
+```{r}
+# df <- read.csv(file="/Users/amandamoeller/Desktop/Thesis Data/RME Data/df.csv", header=T, sep= ",") #crt-a data
+df <- read.csv(file="/Users/amandamoeller/Desktop/Thesis Data/crtdf.csv", header=T, sep=",") # 12.04.2020
+
+# sample size of df
+ss.df <- unique(df$subid)
+length(ss.df) #n=251 (so we have 251 respondents with CRT-A data)
+# with 12.04.2020 data, n=395 now
+
+data <- merge(df, RMEdata_only2, by = "Subject", "subid")
+names(data)
+head(data)
+# sample size of data
+ss.data <- unique(data$subid)
+length(ss.data) #n=119 (so we lose a LOT after merging)    
+
+# dicot vs trichot scores (save for later*)
+data$totagg.dich[data$totagg < 8] <- 0
+data$totagg.dich[data$totagg >= 8] <- 1
+data$totagg.tri[data$totagg < 3] <- -1
+data$totagg.tri[data$totagg >= 3 & data$totagg < 8] <- 0
+data$totagg.tri[data$totagg >= 8] <- 1
+names(data)
+
+# reordering the combined dataframe
+data2<- data[,c(1, 2, 3, 4, 5, 6, 7, 9, 11:14, 25:33  )] # 2, 3, 4, 5, 6, 7, 9, 25:34
+names(data2) # confirming reorder
+data <- data2 # reassigning the label "data" to the combined and reordered data
+rm(list=setdiff(ls(), c("data", "rme.items")))# cleaning up environment
+head(data)
+```
+
+Read in three factors CRTA data (internalizing JMs, externalizing JMs, powerlessness JMs)
+```{r}
+# read in the data
+threefactorCRTA <- read.csv(file="/Users/amandamoeller/Desktop/Thesis Data/Scored CRT-A_df.csv", header=T)
+head(threefactorCRTA)
+
+# merge by ID
+dataTEST <- merge(data, threefactorCRTA, by="id")
+names(dataTEST)
+
+dataTEST2 <- dataTEST[!duplicated(as.list(dataTEST))]
+names(dataTEST2) 
+
+# keep only relevant columns
+names(data)
+data <- data[c(1,2,3:21)]
+names(data)
+
+# rename columns with .x at the end of names
+names(data)[names(data) == "totillog.x"] <- "totillog"
+names(data)[names(data) == "totagg.x"] <- "totagg"
+names(data)[names(data) == "F1.x"] <- "F1"
+names(data)[names(data) == "F2.x"] <- "F2"
+names(data)[names(data) == "F3.x"] <- "F3"
+names(data) 
+head(data)
+```
+
+Merge in demographics data
+```{r}
+# read in the data
+demographics_values <- read.csv(file="/Users/amandamoeller/Desktop/Thesis Data/Demographics files/Group RME Data (values) January 23, 2020_12.32 (DEMOS ONLY).csv", header=T)
+demographics_labels <- read.csv(file="/Users/amandamoeller/Desktop/Thesis Data/Demographics files/Group RME Data (labels) January 23, 2020_12.32 (DEMOS ONLY).csv", header=T)
+
+# merge by ID
+alldemographics <- merge(demographics_values, demographics_labels, by.x="id", by.y="id")
+names(alldemographics)
+head(alldemographics)
+alldemographics <-  alldemographics[-c(1:6,15,16), ] # remove unnecessary rows
+head(alldemographics)
+write.csv(alldemographics, "/Users/amandamoeller/Desktop/Thesis Data/Demographics files\\alldemographics.csv", row.names=TRUE)
+
+# merge demographics with the rest of the data
+data <- merge (alldemographics, data, by.x="id", by.y="subid")
+data <- data[c(1:49, 98:117)]
+
+# rename columns with .x at the end of names
+names(data)[names(data) == "totillog.x"] <- "totillog"
+names(data)[names(data) == "totagg.x"] <- "totagg"
+names(data)[names(data) == "F1.x"] <- "F1"
+names(data)[names(data) == "F2.x"] <- "F2"
+names(data)[names(data) == "F3.x"] <- "F3"
+names(data) 
+head(data)
+```
+
+Read in items for ad-hoc self-report measure of aggression
+```{r}
+# 1) Anger fluctuation subscale from Affect Lability Scale
+# 2) Item 6 from Risk Taking Inventory (item about aggression)
+# 3) Items 9 and 10 from McLean Screening Instrument (anger criterion)
+# 4) Item 15 from PTSD Checklist (irritability/anger/aggression)
+
+df_with_DirectAggItems <- read.csv(file="/Users/amandamoeller/Desktop/Thesis Data/RME Data/othermeasures_selfreport_values_2020.csv", header=T)
+
+# To match subject IDs to RME dataset subject IDs, need to keep first four digits of ID and delete the rest 
+df_with_DirectAggItems$NEWsubid <- substr(df_with_DirectAggItems$subid, 0, 4)
+
+# convert df to one with only the relevant variables
+names(df_with_DirectAggItems)
+DirectAgg_df<-df_with_DirectAggItems%>%select(c("NEWsubid", # Participant ID
+                                                "rtiq06", # Item 6 from Risk Taking Inventory (item about aggression)
+                                                "msibpdq09", "msibpdq10", # Items 9 and 10 from McLean Screening Instrument (anger criterion)
+                                                "pclq15", # Item 15 from PTSD Checklist (irritability/anger/aggression)
+                                                "alsq01", "alsq02", "alsq03", "alsq04", "alsq05", "alsq06", "alsq07" # Items 1-7 Anger fluctuation subscale from Affect Lability Scale
+                                                         ))
+
+# delete first two rows in dataframe (these rows include the instructions and the question identifier)
+DirectAgg_df=DirectAgg_df[-1,]
+DirectAgg_df=DirectAgg_df[-1,]
+
+# Creating a direct measure of aggression TOTAL SCORE:
+DirectAgg_df$totalExplicitAggressionScore <-
+rowSums(cbind(as.numeric(DirectAgg_df$rtiq06),
+as.numeric(DirectAgg_df$msibpdq09),
+as.numeric(DirectAgg_df$msibpdq10), as.numeric(DirectAgg_df$pclq15),
+as.numeric(DirectAgg_df$alsq01), as.numeric(DirectAgg_df$alsq02),
+as.numeric(DirectAgg_df$alsq03), as.numeric(DirectAgg_df$alsq04),
+as.numeric(DirectAgg_df$alsq05),as.numeric(DirectAgg_df$alsq06),
+as.numeric(DirectAgg_df$alsq07)))
+
+# Create total score by manually summing over the relevant variables created above
+DirectAgg_df<-DirectAgg_df%>%group_by(NEWsubid)%>%mutate(totalExplicitAggressionScore=sum(totalExplicitAggressionScore))%>%ungroup()
+head(DirectAgg_df$totalExplicitAggressionScore) 
+DirectAgg_df[,]
+
+# Merge data with DirectAgg_df 
+data <- merge(data, DirectAgg_df, by.x="id", by.y="NEWsubid")
+head(data)
+```
+
+####################################
+Hypothesis Variables Created Below 
+####################################
+
+Hypothesis 1) The implicit motive to aggress will be a) positively related to accuracy in identifying negative mental states and b) negatively related to accuracy in identifying positive and neutral mental states.
+
+Hypothesis 1a -- RME items with negative face as correct response:
+```{r}
+# Negative-as-correct RME items: 2, 14, 26, 34
+
+# Item 2:
+  # a = terrified (neg)
+  # b = upset (NEG) (CORRECT)
+  # c = arrogant (neg)
+  # d = annoyed (neg)
+data$negAccuracy2 <- 0 # compute specific accuracy for item
+data[which(data$RMETrialList == 2 & data$resp2 == 1), "negAccuracy2"] <- 1 #recode item into new negative item accuracy variable
+data[which(data$RMETrialList == 2 & data$resp2 == 1), "RMEStim.Accuracy.Negative"] <- 1 # add each negative accuracy item into new column
+
+# Item 14:
+  # a = irritated (neg)
+  # b = disappointed (neutral)
+  # c = depressed (neg)
+  # d = accusing (NEG) (CORRECT)
+data$negAccuracy14 <- 0 # compute specific inaccuracy for item 
+data[which(data$RMETrialList == 14 & data$resp4 == 1),"negAccuracy14"] <- 1 # recode item into this new variable
+data[which(data$RMETrialList == 14 & data$resp4 == 1),"RMEStim.Accuracy.Negative"] <- 1 # recode each inaccuracy item into this column
+
+# Item 26:
+  # a = alarmed
+  # b = shy (NEUTRAL) 
+  # c = hostile (NEG) (CORRECT)
+  # d = anxious (NEUTRAL)
+data$negAccuracy26 <- 0 # compute specific inaccuracy for item 
+data[which(data$RMETrialList == 26 & data$resp3 == 1),"negAccuracy26"] <- 1 # recode item into this new variable
+data[which(data$RMETrialList == 26 & data$resp3 == 1),"RMEStim.Accuracy.Negative"] <- 1 # recode each inaccuracy item into this column
+
+# Item 34:
+  # a = alarmed
+  # b = shy (NEUTRAL) 
+  # c = hostile (NEG) (CORRECT)
+  # d = anxious (NEG)
+data$negAccuracy34 <- 0 # compute specific inaccuracy for item 
+data[which(data$RMETrialList == 34 & data$resp3 == 1),"negAccuracy34"] <- 1 # recode item into this new variable
+data[which(data$RMETrialList == 34 & data$resp3 == 1),"RMEStim.Accuracy.Negative"] <- 1 # recode each inaccuracy item into this column
+
+#######
+##Put all the items together:
+data$RME_negativeAcc_scores   <- rowSums(cbind(data$negAccuracy2, data$negAccuracy14, data$negAccuracy26, data$negAccuracy34
+                                   )) # Create score by manually summing over the relevant variables created above
+names(data)
+psych::describe(data[,])
+
+data<-data%>%group_by(id)%>%mutate(RME_negativeAcc_total=sum(RME_negativeAcc_scores))%>%ungroup()
+data$RME_negativeAcc_total # RME_negativeAcc_total gives the total number of responses to negative faces correctly identified using the negative word
+```
+
+Hypothesis 1b -- Positive RME items:
+```{r}
+# Calculate total accuracy score for positive-as-correct items:
+
+# Item 1
+  # a = playful (POS) (CORRECT)
+  # b = comforting (POS)
+  # c = irritated (NEG)
+  # d = bored (NEUTRAL)
+data$posAccuracy01 <- 0 # compute specific inaccuracy for item 
+data[which(data$RMETrialList == 01 & data$resp1 == 1),"posAccuracy1"] <- 1 # recode item into this new variable
+data[which(data$RMETrialList == 01 & data$resp1 == 1),"RMEStim.Accuracy.Positive"] <- 1 # recode each inaccuracy item into this column
+
+# Item 20 
+  # a = dominant (n/a)
+  # b = friendly (POS) (CORRECT)
+  # c = guilty (n/a)
+  # d = horrified (NEG)
+data$posAccuracy20 <- 0 # compute specific inaccuracy for item 
+data[which(data$RMETrialList == 20 & data$resp2 == 1),"posAccuracy20"] <- 1 # recode item into this new variable
+data[which(data$RMETrialList == 20 & data$resp2 == 1),"RMEStim.Accuracy.Positive"] <- 1 # recode each inaccuracy item into this column
+
+# Item 25
+  # a = panicked (n/a)
+  # b = incredulous (NEUTRAL)
+  # c = despondent (NEUTRAL)
+  # d = interested (POS) (CORRECT)
+data$posAccuracy25 <- 0 # compute specific inaccuracy for item 
+data[which(data$RMETrialList == 25 & data$resp4 == 1),"posAccuracy25"] <- 1 # recode item into this new variable
+data[which(data$RMETrialList == 25 & data$resp4 == 1),"RMEStim.Accuracy.Positive"] <- 1 # recode each inaccuracy item into this column
+
+# Item 28
+  # a = interested (POS) (CORRECT)
+  # b = joking (POS)
+  # c = affectionate (POS)
+  # d = contented (NEUTRAL)
+data$posAccuracy28 <- 0 # compute specific inaccuracy for item 
+data[which(data$RMETrialList == 28 & data$resp1 == 1),"posAccuracy28"] <- 1 # recode item into this new variable
+data[which(data$RMETrialList == 28 & data$resp1 == 1),"RMEStim.Accuracy.Positive"] <- 1 # recode each inaccuracy item into this column
+
+# Item 30
+ # a = grateful (POS)
+  # b = flirtatious (POS) (CORRECT)
+  # c = hostile (NEG)
+  # d = disappointed (NEUTRAL)
+data$posAccuracy30 <- 0 # compute specific inaccuracy for item 
+data[which(data$RMETrialList == 30 & data$resp2 == 1),"posAccuracy30"] <- 1 # recode item into this new variable
+data[which(data$RMETrialList == 30 & data$resp2 == 1),"RMEStim.Accuracy.Positive"] <- 1 # recode each inaccuracy item into this column
+
+### Put all the items together
+data$RME_positiveAcc_scores <- rowSums(cbind(data$posAccuracy01, data$posAccuracy20, data$posAccuracy25, data$posAccuracy28, data$posAccuracy30))
+names(data)
+
+psych::describe(data[,])
+
+data<-data%>%group_by(id)%>%mutate(RME_positiveAcc_total=sum(RME_positiveAcc_scores))%>%ungroup()
+
+data$RME_positiveAcc_total
+```
+
+Hypothesis 1c - Neutral RME items:
+```{r}
+# Neutral-as-correct RME items: 5-13, 15, 17, 18, 19, 24, 27, 29, 32, 35
+
+# Calculate total accuracy score for neutral-as-correct items:
+
+# Item 5:
+  # a = irritated (NEG)
+  # b = sarcastic 
+  # c = worried (NEUTRAL) (CORRECT)
+  # d = friendly (POS)
+data$neutralAccuracy05 <- 0 # compute specific inaccuracy for item 
+data[which(data$RMETrialList == 05 & data$resp3 == 1),"neutralAccuracy05"] <- 1 # recode item into this new variable
+data[which(data$RMETrialList == 05 & data$resp3 == 1),"RMEStim.Accuracy.Neutral"] <- 1 # recode each inaccuracy item into this column
+
+# Item 6:
+  # a = aghast (n/a)
+  # b = fantasizing (NEUTRAL) (CORRECT)
+  # c = impatient (NEUTRAL)
+  # d = alarmed (n/a)
+data$neutralAccuracy06 <- 0 # compute specific inaccuracy for item 
+data[which(data$RMETrialList == 06 & data$resp2 == 1),"neutralAccuracy06"] <- 1 # recode item into this new variable
+data[which(data$RMETrialList == 06 & data$resp2 == 1),"RMEStim.Accuracy.Neutral"] <- 1 # recode each inaccuracy item into this column
+
+# Item 7:
+  # a = apologetic (n/a)
+  # b = friendly (POS)
+  # c = uneasy (NEUTRAL) (CORRECT)
+  # d = dispirited (NEG) 
+data$neutralAccuracy07 <- 0 # compute specific inaccuracy for item 
+data[which(data$RMETrialList == 07 & data$resp3 == 1),"neutralAccuracy07"] <- 1 # recode item into this new variable
+data[which(data$RMETrialList == 07 & data$resp3 == 1),"RMEStim.Accuracy.Neutral"] <- 1 # recode each inaccuracy item into this column
+
+# Item 8:
+  # a = despondent (NEUTRAL) (CORRECT)
+  # b = relieved (POS)
+  # c = shy (NEUTRAL)
+  # d = excited (POS)
+data$neutralAccuracy08 <- 0 # compute specific inaccuracy for item 
+data[which(data$RMETrialList == 08 & data$resp1 == 1),"neutralAccuracy08"] <- 1 # recode item into this new variable
+data[which(data$RMETrialList == 08 & data$resp1 == 1),"RMEStim.Accuracy.Neutral"] <- 1 # recode each inaccuracy item into this column
+
+# Item 9:
+  # a = annoyed (NEG)
+  # b = hostile (NEG)
+  # c = horrified (NEG)
+  # d = preoccupied (NEUTRAL) (CORRECT)
+data$neutralAccuracy09 <- 0 # compute specific inaccuracy for item 
+data[which(data$RMETrialList == 09 & data$resp4 == 1),"neutralAccuracy09"] <- 1 # recode item into this new variable
+data[which(data$RMETrialList == 09 & data$resp4 == 1),"RMEStim.Accuracy.Neutral"] <- 1 # recode each inaccuracy item into this column
+
+# Item 10:
+  # a = cautious (NEUTRAL) (CORRECT)
+  # b = insisting (n/a)
+  # c = bored (NEUTRAL)
+  # d = aghast (n/a)
+data$neutralAccuracy10 <- 0 # compute specific inaccuracy for item 
+data[which(data$RMETrialList == 10 & data$resp1 == 1),"neutralAccuracy10"] <- 1 # recode item into this new variable
+data[which(data$RMETrialList == 10 & data$resp1 == 1),"RMEStim.Accuracy.Neutral"] <- 1 # recode each inaccuracy item into this column
+
+# Item 11:
+  # a = terrified (NEG)
+  # b = amused (POS)
+  # c = regretful (NEUTRAL) (CORRECT)
+  # d = flirtatious (POS)
+data$neutralAccuracy11 <- 0 # compute specific inaccuracy for item 
+data[which(data$RMETrialList == 11 & data$resp3 == 1),"neutralAccuracy11"] <- 1 # recode item into this new variable
+data[which(data$RMETrialList == 11 & data$resp3 == 1),"RMEStim.Accuracy.Neutral"] <- 1 # recode each inaccuracy item into this column
+
+# Item 12:
+  # a = indifferent (NEUTRAL)
+  # b = embarrassed (NEUTRAL)
+  # c = sceptical (NEUTRAL) (CORRECT)
+  # d = dispirited (NEG)
+data$neutralAccuracy12 <- 0 # compute specific inaccuracy for item 
+data[which(data$RMETrialList == 12 & data$resp3 == 1),"neutralAccuracy12"] <- 1 # recode item into this new variable
+data[which(data$RMETrialList == 12 & data$resp3 == 1),"RMEStim.Accuracy.Neutral"] <- 1 # recode each inaccuracy item into this column
+
+# Item 13:
+  # a = decisive (NEUTRAL)
+  # b = anticipating (NEUTRAL) (CORRECT)
+  # c = threatening (NEG)
+  # d = shy (NEUTRAL)
+data$neutralAccuracy13 <- 0 # compute specific inaccuracy for item 
+data[which(data$RMETrialList == 13 & data$resp2 == 1),"neutralAccuracy13"] <- 1 # recode item into this new variable
+data[which(data$RMETrialList == 13 & data$resp2 == 1),"RMEStim.Accuracy.Neutral"] <- 1 # recode each inaccuracy item into this column
+
+# Item 15:
+  # a = contemplative (NEUTRAL) (CORRECT)
+  # b = flustered (NEUTRAL)
+  # c = encouraging (POS)
+  # d = amused (POS)
+data$neutralAccuracy15 <- 0 # compute specific inaccuracy for item 
+data[which(data$RMETrialList == 15 & data$resp1 == 1),"neutralAccuracy15"] <- 1 # recode item into this new variable
+data[which(data$RMETrialList == 15 & data$resp1 == 1),"RMEStim.Accuracy.Neutral"] <- 1 # recode each inaccuracy item into this column
+
+# Item 17:
+  # a = doubtful (NEUTRAL) (correct)
+  # b = affectionate (POS)
+  # c = playful (POS)
+  # d = aghast (n/a)
+data$neutralAccuracy17 <- 0 # compute specific inaccuracy for item 
+data[which(data$RMETrialList == 17 & data$resp1 == 1),"neutralAccuracy17"] <- 1 # recode item into this new variable
+data[which(data$RMETrialList == 17 & data$resp1 == 1),"RMEStim.Accuracy.Neutral"] <- 1 # recode each inaccuracy item into this column
+
+# Item 18:
+  # a = decisive (NEUTRAL) (correct)
+  # b = anticipating (POS)
+  # c = aghast (n/a)
+  # d = bored (NEUTRAL)
+data$neutralAccuracy18 <- 0 # compute specific inaccuracy for item 
+data[which(data$RMETrialList == 18 & data$resp1 == 1),"neutralAccuracy18"] <- 1 # recode item into this new variable
+data[which(data$RMETrialList == 18 & data$resp1 == 1),"RMEStim.Accuracy.Neutral"] <- 1 # recode each inaccuracy item into this column
+
+# Item 19: 
+  # a = arrogant (NEG)
+  # b = grateful (POS)
+  # c = sarcastic (n/a)
+  # d = tentative (NEUTRAL) (CORRECT)
+data$neutralAccuracy19 <- 0 # compute specific inaccuracy for item 
+data[which(data$RMETrialList == 19 & data$resp4 == 1),"neutralAccuracy19"] <- 1 # recode item into this new variable
+data[which(data$RMETrialList == 19 & data$resp4 == 1),"RMEStim.Accuracy.Neutral"] <- 1 # recode each inaccuracy item into this column
+
+# Item 21: 
+  # a = embarrassed (NEUTRAL)
+  # b = fantasizing (NEUTRAL) (CORRECT)
+  # c = confused (NEUTRAL)
+  # d = panicked (n/a)
+data$neutralAccuracy21 <- 0 # compute specific inaccuracy for item 
+data[which(data$RMETrialList == 21 & data$resp2 == 1),"neutralAccuracy21"] <- 1 # recode item into this new variable
+data[which(data$RMETrialList == 21 & data$resp2 == 1),"RMEStim.Accuracy.Neutral"] <- 1 # recode each inaccuracy item into this column
+
+# Item 22:
+  # a = preoccupied (NEUTRAL) (CORRECT)
+  # b = grateful (n/a)
+  # c = insisting (n/a)
+  # d = imploring (NEUTRAL)
+data$neutralAccuracy22 <- 0 # compute specific inaccuracy for item 
+data[which(data$RMETrialList == 22 & data$resp1 == 1),"neutralAccuracy22"] <- 1 # recode item into this new variable
+data[which(data$RMETrialList == 22 & data$resp1 == 1),"RMEStim.Accuracy.Neutral"] <- 1 # recode each inaccuracy item into this column
+
+# Item 24:
+  # a = pensive (NEUTRAL) (CORRECT)
+  # b = irritated (NEG)
+  # c = excited (POS)
+  # d = hostile (NEG)
+data$neutralAccuracy24 <- 0 # compute specific inaccuracy for item 
+data[which(data$RMETrialList == 24 & data$resp1 == 1),"neutralAccuracy24"] <- 1 # recode item into this new variable
+data[which(data$RMETrialList == 24 & data$resp1 == 1),"RMEStim.Accuracy.Neutral"] <- 1 # recode each inaccuracy item into this column
+
+# Item 27:
+  # a = joking (POS)
+  # b = cautious (NEUTRAL) (CORRECT)
+  # c = arrogant (NEG)
+  # d = reassuring (n/a)
+data$neutralAccuracy27 <- 0 # compute specific inaccuracy for item 
+data[which(data$RMETrialList == 09 & data$resp2 == 1),"neutralAccuracy09"] <- 1 # recode item into this new variable
+data[which(data$RMETrialList == 09 & data$resp2 == 1),"RMEStim.Accuracy.Neutral"] <- 1 # recode each inaccuracy item into this column
+
+# Item 29: 
+  # a = impatient (NEUTRAL)
+  # b = aghast (n/a)
+  # c = irritated (NEG)
+  # d = reflective (NEUTRAL) (CORRECT)
+data$neutralAccuracy29 <- 0 # compute specific inaccuracy for item 
+data[which(data$RMETrialList == 29 & data$resp4 == 1),"neutralAccuracy29"] <- 1 # recode item into this new variable
+data[which(data$RMETrialList == 29 & data$resp4 == 1),"RMEStim.Accuracy.Neutral"] <- 1 # recode each inaccuracy item into this column
+
+# Item 32: 
+  # a = serious (NEUTRAL) (CORRECT)
+  # b = ashamed (NEUTRAL) 
+  # c = bewildered (NEUTRAL)
+  # d = alarmed (n/a)
+data$neutralAccuracy32 <- 0 # compute specific inaccuracy for item 
+data[which(data$RMETrialList == 32 & data$resp1 == 1),"neutralAccuracy32"] <- 1 # recode item into this new variable
+data[which(data$RMETrialList == 32 & data$resp1 == 1),"RMEStim.Accuracy.Neutral"] <- 1 # recode each inaccuracy item into this column
+
+# Item 35
+  # a = puzzled (NEUTRAL)
+  # b = nervous (NEUTRAL) (CORRECT)
+  # c = insisting (n/a)
+  # d = contemplative (NEUTRAL)
+data$neutralAccuracy35 <- 0 # compute specific inaccuracy for item 
+data[which(data$RMETrialList == 35 & data$resp2 == 1),"neutralAccuracy35"] <- 1 # recode item into this new variable
+data[which(data$RMETrialList == 35 & data$resp2 == 1),"RMEStim.Accuracy.Neutral"] <- 1 # recode each inaccuracy item into this column
+
+
+### Put all the items together
+
+data$RME_neutralAcc_scores <- rowSums(cbind(data$neutralAccuracy05, data$neutralAccuracy06, data$neutralAccuracy07,
+                                               data$neutralAccuracy08, data$neutralAccuracy09, data$neutralAccuracy10,
+                                               data$neutralAccuracy11, data$neutralAccuracy12, data$neutralAccuracy13,
+                                               data$neutralAccuracy14, data$neutralAccuracy15, data$neutralAccuracy17,
+                                               data$neutralAccuracy18, data$neutralAccuracy19, data$neutralAccuracy24,
+                                               data$neutralAccuracy27, data$neutralAccuracy29, data$neutralAccuracy32,
+                                               data$neutralAccuracy35))
+names(data)
+
+psych::describe(data[,])
+
+data<-data%>%group_by(id)%>%mutate(RME_neutralAcc_total=sum(RME_neutralAcc_scores))%>%ungroup()
+
+data$RME_neutralAcc_total
+```
+
+Hypothesis 2) The implicit motive to aggress will be positively related to the identification of neutral mental states as negative.
+```{r}
+# Neutral words (rWG >= .70):
+
+# (Pensive, incredulous, imploring, bewildered, perplexed, puzzled, serious, indifferent, confused, indecisive, preoccupied, flustered, nervous, skeptical, regretful, ashamed, disappointed)
+
+# Items with NEUTRAL as CORRECT response:
+# 5, 8, 9, 10, 11, 12, 15, 22, 24, 27, 32, 35 (rWG>.80)
+# 6, 7, 13, 17, 18, 19, 21, 29, 32, 35 (rWG>.70)
+
+# Item 6:
+  # a = aghast (n/a)
+  # b = fantasizing (NEUTRAL) (CORRECT)
+  # c = impatient (NEUTRAL)
+  # d = alarmed (n/a)
+# no negative choices
+
+# Item 7:
+  # a = apologetic (n/a)
+  # b = friendly (POS)
+  # c = uneasy (NEUTRAL) (CORRECT)
+  # d = dispirited (NEG) 
+data$negInacc07d <- 0 # compute specific inaccuracy for item 
+data[which(data$RMETrialList == 7 & data$resp4 == 1),"negInacc07d"] <- 1 # recode item into this new variable
+data[which(data$RMETrialList == 7 & data$resp4 == 1),"RMEStim.Inacc.NEG"] <- 1 # recode each inaccuracy item into this column
+
+# Item 13:
+  # a = decisive (NEUTRAL)
+  # b = anticipating (NEUTRAL) (CORRECT)
+  # c = threatening (NEG)
+  # d = shy (NEUTRAL)
+data$negInacc13 <- 0 # compute specific inaccuracy for item 
+data[which(data$RMETrialList == 13 & data$resp3 == 1),"negInacc13"] <- 1 # recode item into this new variable
+data[which(data$RMETrialList == 13 & data$resp3 == 1),"RMEStim.Inacc.NEG"] <- 1 # recode each inaccuracy item into this column
+
+# Item 17:
+  # a = doubtful (NEUTRAL)
+  # b = affectionate (POS)
+  # c = playful (POS)
+  # d = aghast (n/a)
+# no negative choices
+
+# Item 18:
+  # a = decisive (NEUTRAL)
+  # b = anticipating (POS)
+  # c = aghast (n/a)
+  # d = bored (NEUTRAL)
+# no negative choices
+
+
+# Item 19: 
+  # a = arrogant (NEG)
+  # b = grateful (POS)
+  # c = sarcastic 
+  # d = tentative (NEUTRAL) (CORRECT)
+data$negInacc19a <- 0 # compute specific inaccuracy for item 
+data[which(data$RMETrialList == 19 & data$resp1 == 1),"negInacc19a"] <- 1 # recode item into this new variable
+data[which(data$RMETrialList == 19 & data$resp1 == 1),"RMEStim.Inacc.NEG"] <- 1 # recode each inaccuracy item into this column
+
+
+# Item 21: 
+  # a = embarrassed (NEUTRAL)
+  # b = fantasizing (NEUTRAL) (CORRECT)
+  # c = confused (NEUTRAL)
+  # d = panicked (n/a)
+# no negative choices
+
+# Item 29: 
+  # a = impatient (NEUTRAL)
+  # b = aghast (n/a)
+  # c = irritated (NEG)
+  # d = reflective (NEUTRAL) (CORRECT)
+data$negInacc29 <- 0 # compute specific inaccuracy for item 
+data[which(data$RMETrialList == 29 & data$resp3 == 1),"negInacc29"] <- 1 # recode item into this new variable
+data[which(data$RMETrialList == 29 & data$resp3 == 1),"RMEStim.Inacc.NEG"] <- 1 # recode each inaccuracy item into this column
+
+# Item 32: 
+  # a = serious (NEUTRAL) (CORRECT)
+  # b = ashamed (NEUTRAL) 
+  # c = bewildered (NEUTRAL)
+  # d = alarmed (n/a)
+# no negative choices
+
+# Item 35
+  # a = puzzled (NEUTRAL)
+  # b = nervous (NEUTRAL) (CORRECT)
+  # c = insisting (n/a)
+  # d = contemplative (NEUTRAL)
+# no negative choices
+
+# Item 5:
+  # a = irritated (NEG)
+  # b = sarcastic (n/a)
+  # c = worried (NEUTRAL) (CORRECT)
+  # d = friendly (POS)
+data$negInacc05 <- 0 # compute specific inaccuracy for item 
+data[which(data$RMETrialList == 5 & data$resp1 == 1),"negInacc05"] <- 1 # recode item into this new variable
+data[which(data$RMETrialList == 5 & data$resp1 == 1),"RMEStim.Inacc.NEG"] <- 1 # recode each inaccuracy item into this column
+
+# Item 8:
+  # a = despondent (NEUTRAL) (CORRECT)
+  # b = relieved (POS)
+  # c = shy (NEUTRAL)
+  # d = excited (POS)
+# no negative choices
+
+# Item 9:
+  # a = annoyed (NEG)
+  # b = hostile (NEG)
+  # c = horrified (NEG)
+  # d = preoccupied (NEUTRAL) (CORRECT)
+data$negInacc09a <- 0 # compute specific inaccuracy for item 
+data[which(data$RMETrialList == 9 & data$resp1 == 1),"negInacc09a"] <- 1 # recode item into this new variable
+data[which(data$RMETrialList == 9 & data$resp1 == 1),"RMEStim.Inacc.NEG"] <- 1 # recode each inaccuracy item into this column
+
+data$negInacc09b <- 0 # compute specific inaccuracy for item 
+data[which(data$RMETrialList == 9 & data$resp2 == 1),"negInacc09b"] <- 1 # recode item into this new variable
+data[which(data$RMETrialList == 9 & data$resp2 == 1),"RMEStim.Inacc.NEG"] <- 1 # recode each inaccuracy item into this column
+
+data$negInacc09c <- 0 # compute specific inaccuracy for item 
+data[which(data$RMETrialList == 9 & data$resp3 == 1),"negInacc09c"] <- 1 # recode item into this new variable
+data[which(data$RMETrialList == 9 & data$resp3 == 1),"RMEStim.Inacc.NEG"] <- 1 # recode each inaccuracy item into this column
+
+# Item 10:
+  # a = cautious (NEUTRAL) (CORRECT)
+  # b = insisting (n/a)
+  # c = bored (NEUTRAL)
+  # d = aghast (n/a)
+
+# no negative choices
+
+# Item 11:
+  # a = terrified (NEG)
+  # b = amused (POS)
+  # c = regretful (NEUTRAL) (CORRECT)
+  # d = flirtatious (POS)
+data$negInacc11 <- 0 # compute specific inaccuracy for item 
+data[which(data$RMETrialList == 11 & data$resp1 == 1),"negInacc11"] <- 1 # recode item into this new variable
+data[which(data$RMETrialList == 11 & data$resp1 == 1),"RMEStim.Inacc.NEG"] <- 1 # recode each inaccuracy item into this column
+
+# Item 12:
+  # a = indifferent (NEUTRAL)
+  # b = embarrassed (NEUTRAL)
+  # c = sceptical (NEUTRAL) (CORRECT)
+  # d = dispirited (NEG)
+data$negInacc12 <- 0 # compute specific inaccuracy for item 
+data[which(data$RMETrialList == 12 & data$resp4 == 1),"negInacc12"] <- 1 # recode item into this new variable
+data[which(data$RMETrialList == 12 & data$resp4 == 1),"RMEStim.Inacc.NEG"] <- 1 # recode each inaccuracy item into this column
+
+# Item 15:
+  # a = contemplative (NEUTRAL) (CORRECT)
+  # b = flustered (NEUTRAL)
+  # c = encouraging (POS)
+  # d = amused (POS)
+# no negative choices
+
+# Item 22:
+  # a = preoccupied (NEUTRAL) (CORRECT)
+  # b = grateful (n/a)
+  # c = insisting (n/a)
+  # d = imploring (NEUTRAL)
+# no negative choices
+
+# Item 24:
+  # a = pensive (NEUTRAL) (CORRECT)
+  # b = irritated (NEG)
+  # c = excited (POS)
+  # d = hostile (NEG)
+data$negInacc24b <- 0 # compute specific inaccuracy for item 
+data[which(data$RMETrialList == 24 & data$resp2 == 1),"negInacc24b"] <- 1 # recode item into this new variable
+data[which(data$RMETrialList == 24 & data$resp2 == 1),"RMEStim.Inacc.NEG"] <- 1 # recode each inaccuracy item into this column
+
+data$negInacc24d <- 0 # compute specific inaccuracy for item 
+data[which(data$RMETrialList == 24 & data$resp4 == 1),"negInacc24d"] <- 1 # recode item into this new variable
+data[which(data$RMETrialList == 24 & data$resp4 == 1),"RMEStim.Inacc.NEG"] <- 1 # recode each inaccuracy item into this column
+
+# Item 27:
+  # a = joking (POS)
+  # b = cautious (NEUTRAL) (CORRECT)
+  # c = arrogant (NEG)
+  # d = reassuring (n/a)
+data$negInacc27 <- 0 # compute specific inaccuracy for item 
+data[which(data$RMETrialList == 27 & data$resp3 == 1),"negInacc27"] <- 1 # recode item into this new variable
+data[which(data$RMETrialList == 27 & data$resp3 == 1),"RMEStim.Inacc.NEG"] <- 1 # recode each inaccuracy item into this column
+
+# Item 32:
+  # a = serious (NEUTRAL) (CORRECT)
+  # b = ashamed (NEUTRAL)
+  # c = bewildered (NEUTRAL)
+  # d = alarmed
+# no negative choices
+
+# Item 35:
+  # a = puzzled (NEUTRAL)
+  # b = nervous (NEUTRAL) (CORRECT)
+  # c = insisting (n/a)
+  # d = contemplative (NEUTRAL)
+# no negative choices
+
+ "When given the option, how many times did a respondent incorrectly select a NEGATIVE word to describe neutral faces?"
+ 
+
+data$neutralItem_negInaccscores   <- rowSums(cbind(data$negInacc05, data$negInacc07d, data$negInacc13, data$negInacc19a,
+                                                   data$negInacc29, data$negInacc09a, data$negInacc09b, data$negInacc09c,
+                                                   data$negInacc11, data$negInacc12, data$negInacc24b, data$negInacc24d,
+                                                   data$negInacc27
+                                   ))
+names(data)
+psych::describe(data[,])
+
+# Create score by manually summing over the relevant variables created above
+names(data)
+psych::describe(data[,])
+
+data<-data%>%group_by(id)%>%mutate(RMEneutralItemNegInacc_total=sum(neutralItem_negInaccscores))%>%ungroup()
+data$RMEneutralItemNegInacc_total 
+```
+
+
+```{r}
+# Hypothesis 3) The explicit motive to aggress strengthens the positive relationship between the implicit motive to aggress and the accurate identification of negative mental states
+
+# Direct aggression score as moderator of relationship between totagg and negative item correct score
+data$aggress_interactionterm <- data$totagg*data$totalExplicitAggressionScore
+H3 <- lm(data$RME_negativeAcc_total ~ data$totagg + data$totalExplicitAggressionScore + data$aggress_interactionterm)
+H3
+```
+
+```{r}
+# Hypothesis 4) The explicit motive to aggress strengthens the negative relationship between the implicit motive to aggress and the accurate identification of positive mental states.
+
+# Direct aggression score as moderator of relationship between totagg and positive item correct score
+data$aggress_interactionterm <- data$totagg*data$totalExplicitAggressionScore
+H4 <- lm(data$RME_positiveAcc_total ~ data$totagg + data$totalExplicitAggressionScore + data$aggress_interactionterm)
+H4
+```
+
+Variable created below RME items with threat words with rWG >= .70 (aggInacc)
+```{r}
+# THREAT ITEMS
+# (words = threatening, hostile, accusing, distrustful, irritated, arrogant, suspicious)
+
+## Items below are those that include at least 1 response identified as a "threat" word with rWG > .80 (see words in line above)
+## (below, NT = non-threat response, T = threat response)
+
+# Item 1:
+  # a = decisive (NT) (CORRECT)
+  # b = anticipating (NT) 
+  # c = threatening (T)
+  # d = shy (NT)
+# 1: threat is incorrect
+data$aggInacc01 <- 0 # compute specific inaccuracy for item 01
+data[which(data$RMETrialList == 1 & data$resp3 == 1),"aggInacc01"] <- 1 # recode item 1 into this new variable
+data[which(data$RMETrialList == 1 & data$resp3 == 1),"RMEStim.Inacc.AGG"] <- 1 # recode each agg inaccuracy item into this column
+
+# Item 2: 
+  # a = terrified (NT)
+  # b = upset (NT) (CORRECT)
+  # c = arrogant (T)
+  # d = annoyed (NT)
+# 2: threat is incorrect
+data$aggInacc02 <- 0 # compute specific inaccuracy for item 02
+data[which(data$RMETrialList == 2 & data$resp3 == 1),"aggInacc02"] <- 1 # recode item 2 into this new variable
+data[which(data$RMETrialList == 2 & data$resp3 == 1),"RMEStim.Inacc.AGG"] <- 1 # recode each agg inaccuracy item into this column
+
+# Item 5:
+  # a = irritated (T)
+  # b = sarcastic (NT)
+  # c = worried (NT) (CORRECT)
+  # d = friendly (NT)
+# 5: threat is incorrect
+data$aggInacc05 <- 0 # compute specific inaccuracy for item 
+data[which(data$RMETrialList == 5 & data$resp1 == 1),"aggInacc05"] <- 1 # recode item into this new variable
+data[which(data$RMETrialList == 5 & data$resp1 == 1),"RMEStim.Inacc.AGG"] <- 1 # recode each agg inaccuracy item into this column
+
+# Item 9:
+  # a = annoyed (NT)
+  # b = hostile (T)
+  # c = horrified (NT)
+  # d = preoccupied (NT) (CORRECT)
+# 9: threat is incorrect
+data$aggInacc09 <- 0 # compute specific inaccuracy for item 
+data[which(data$RMETrialList == 9 & data$resp2 == 1),"aggInacc09"] <- 1 # recode item into this new variable
+data[which(data$RMETrialList == 9 & data$resp2 == 1),"RMEStim.Inacc.AGG"] <- 1 # recode each agg inaccuracy item into this column
+
+# Item 13: 
+  # a = decisive (NT)
+  # b = anticipating (NT)
+  # c = threatening (T)
+  # d = shy (NT) (CORRECT)
+# 13: threat is incorrect
+data$aggInacc13 <- 0 # compute specific inaccuracy for item 
+data[which(data$RMETrialList == 13 & data$resp3 == 1),"aggInacc13"] <- 1 # recode item into this new variable
+data[which(data$RMETrialList == 13 & data$resp3 == 1),"RMEStim.Inacc.AGG"] <- 1 # recode each agg inaccuracy item into this column
+
+# Item 14:
+  # a = irritated (T)
+  # b = disappointed (NT)
+  # c = depressed (NT)
+  # d = accusing (T) (CORRECT)
+# 14: threat is CORRECT, but (A) is also threat-word and incorrect
+data$aggInacc14 <- 0 # compute specific inaccuracy for item 
+data[which(data$RMETrialList == 14 & data$resp1 == 1),"aggInacc14"] <- 1 # recode item into this new variable
+data[which(data$RMETrialList == 14 & data$resp1 == 1),"RMEStim.Inacc.AGG"] <- 1 # recode each agg inaccuracy item into this column
+
+# Item 16:
+  # a = irritated (T)
+  # b = thoughtful (NT) (CORRECT)
+  # c = encouraging (NT)
+  # d = sympathetic (NT)
+# 16: threat is incorrect
+data$aggInacc16 <- 0 # compute specific inaccuracy for item 
+data[which(data$RMETrialList == 16 & data$resp1 == 1),"aggInacc16"] <- 1 # recode item into this new variable
+data[which(data$RMETrialList == 16 & data$resp1 == 1),"RMEStim.Inacc.AGG"] <- 1 # recode each agg inaccuracy item into this column
+
+# Item 19:
+  # a = arrogant (T)
+  # b = grateful (NT)
+  # c = sarcastic (NT)
+  # d = tentative (NT) (CORRECT)
+# 19: threat is incorrect
+data$aggInacc19 <- 0 # compute specific inaccuracy for item 
+data[which(data$RMETrialList == 19 & data$resp1 == 1),"aggInacc19"] <- 1 # recode item into this new variable
+data[which(data$RMETrialList == 19 & data$resp1 == 1),"RMEStim.Inacc.AGG"] <- 1 # recode each agg inaccuracy item into this column
+
+# Item 24:
+  # a = pensive (NT) (CORRECT)
+  # b = irritated (T)
+  # c = excited (NT)
+  # d = hostile (T)
+# 24: threat is incorrect, (b) and (d) are both incorrect threat-words
+#B: 
+data$aggInacc24a <- 0 # compute specific inaccuracy for item 
+data[which(data$RMETrialList == 24 & data$resp2 == 1),"aggInacc24a"] <- 1 # recode item into this new variable
+data[which(data$RMETrialList == 24 & data$resp2 == 1),"RMEStim.Inacc.AGG"] <- 1 # recode each agg inaccuracy item into this column
+#D:
+data$aggInacc24b <- 0 # compute specific inaccuracy for item 
+data[which(data$RMETrialList == 24 & data$resp4 == 1),"aggInacc24b"] <- 1 # recode item into this new variable
+data[which(data$RMETrialList == 24 & data$resp4 == 1),"RMEStim.Inacc.AGG"] <- 1 # recode each agg inaccuracy item into this column
+
+# Item 26:
+  # a = alarmed (NT)
+  # b = shy (NT)
+  # c = hostile (T) (CORRECT)
+  # d = anxious (NT)
+# 26: threat is CORRECT
+data$aggInacc26 <- 0 # compute specific inaccuracy for item 
+data[which(data$RMETrialList == 26 & data$resp3 == 1),"aggInacc26"] <- 1 # recode item into this new variable
+data[which(data$RMETrialList == 26 & data$resp3 == 1),"RMEStim.Inacc.AGG"] <- 1 # recode each agg inaccuracy item into this column
+
+# Item 27:
+  # a = joking (NT)
+  # b = cautious (NT) (CORRECT)
+  # c = arrogant (T)
+  # d = reassuring (NT)
+# 27: threat is incorrect
+data$aggInacc27 <- 0 # compute specific inaccuracy for item 
+data[which(data$RMETrialList == 27 & data$resp3 == 1),"aggInacc27"] <- 1 # recode item into this new variable
+data[which(data$RMETrialList == 27 & data$resp3 == 1),"RMEStim.Inacc.AGG"] <- 1 # recode each agg inaccuracy item into this column
+
+# Item 29: 
+  # a = impatient (NT)
+  # b = aghast (NT)
+  # c = irritated (T)
+  # d = reflective (NT) (CORRECT)
+# 29: threat is incorrect
+data$aggInacc29 <- 0 # compute specific inaccuracy for item 
+data[which(data$RMETrialList == 29 & data$resp3 == 1),"aggInacc29"] <- 1 # recode item into this new variable
+data[which(data$RMETrialList == 29 & data$resp3 == 1),"RMEStim.Inacc.AGG"] <- 1 # recode each agg inaccuracy item into this column
+
+# Item 30:
+  # a = grateful (NT)
+  # b = flirtatious (NT) (CORRECT)
+  # c = hostile (T)
+  # d = disappointed (NT)
+# 30: threat is incorrect
+data$aggInacc30 <- 0 # compute specific inaccuracy for item 
+data[which(data$RMETrialList == 30 & data$resp3 == 1),"aggInacc30"] <- 1 # recode item into this new variable
+data[which(data$RMETrialList == 30 & data$resp3 == 1),"RMEStim.Inacc.AGG"] <- 1 # recode each agg inaccuracy item into this column
+
+# Item 34:
+  # a = aghast (NT)
+  # b = baffled (NT)
+  # c = distrustful (T) (CORRECT)
+  # d = terrified (NT)
+# 34: threat is CORRECT
+data$aggInacc34 <- 0 # compute specific inaccuracy for item 
+data[which(data$RMETrialList == 34 & data$resp3 == 1),"aggInacc34"] <- 1 # recode item into this new variable
+data[which(data$RMETrialList == 34 & data$resp3 == 1),"RMEStim.Inacc.AGG"] <- 1 # recode each agg inaccuracy item into this column
+
+# Item 36:
+  # a = ashamed (NT)
+  # b = nervous (NT)
+  # c = suspicious (T) (CORRECT)
+  # d = indecisive (NT)
+# 36: threat is CORRECT
+data$aggInacc36 <- 0 # compute specific inaccuracy for item 
+data[which(data$RMETrialList == 36 & data$resp3 == 1),"aggInacc36"] <- 1 # recode item into this new variable
+data[which(data$RMETrialList == 36 & data$resp3 == 1),"RMEStim.Inacc.AGG"] <- 1 # recode each agg inaccuracy item into this column
+
+
+# Create a total THREAT score
+
+ "When given the option, how many times did a respondent incorrectly select a THREAT word to describe NON-THREAT eyes?"
+
+data$itemThreatScores   <- rowSums(cbind(data$aggInacc01, data$aggInacc02, data$aggInacc05,
+                                   data$aggInacc09, data$aggInacc13, data$aggInacc14, 
+                                   data$aggInacc16, data$aggInacc19, data$aggInacc24a, 
+                                   data$aggInacc24b, data$aggInacc26, data$aggInacc27,
+                                   data$aggInacc29, data$aggInacc30, data$aggInacc34, data$aggInacc36
+                                   ))
+names(data)
+psych::describe(data[,])
+
+# Create THREAT inaccuracy score by manually summing over the relevant variables created above
+names(data)
+psych::describe(data[,])
+
+data<-data%>%group_by(id)%>%mutate(RMEThreatScore_total=sum(itemThreatScores))%>%ungroup()
+data$RMEThreatScore_total # RMEThreatScore_total gives the total number of responses incorrectly identified using the threat-word
+```
+
+
+12.28.2020 RME & Three-Factor JMs
+```{r}
+##### externalizing: HAB and VPO
+## strong: accusing, comforting(rc), distrustful, encouraging(rc), friendly(rc),     hostile, suspicious, threatening
+## weak: affectionate(rc), annoyed, flirtatious(rc), sympathetic(rc), irritated,     reassuring(rc)
+
+# Calculate total accuracy score for Factor 1 Externalizing items:
+
+# 1b (rc), 1c
+# Item 1
+  # a = playful (CRRECT)
+  # b = comforting (EXT rc) (strong list)
+  # c = irritated (EXT) (weak list)
+  # d = bored 
+data$externalizing01b <- 0 # compute specific inaccuracy for item
+data[which(data$RMETrialList==01 & data$resp2==1), "externalizing01b"] <- -1 # recode item into new externalizing variable
+data[which(data$RMETrialList == 01 & data$resp2==1), "RMEStim.Externalizing"] <- -1  # recode each externalizing item into this column
+data$externalizing01c <- 0 # compute specific inaccuracy for item
+data[which(data$RMETrialList==01 & data$resp3==1), "externalizing01c"] <- 1 # recode item into new externalizing variable
+data[which(data$RMETrialList == 01 & data$resp3==1), "RMEStim.Externalizing"] <- 1  # recode each externalizing item into this column
+
+# 2c, 2d
+# Item 2:
+  # a = terrified 
+  # b = upset (CORRECT)
+  # c = arrogant (EXT) (weak list)
+  # d = annoyed (EXT) (weak list)
+data$externalizing02c <- 0 # compute specific inaccuracy for item
+data[which(data$RMETrialList==02 & data$resp3==1), "externalizing02c"] <- 1 # recode item into new externalizing variable
+data[which(data$RMETrialList == 02 & data$resp3==1), "RMEStim.Externalizing"] <- 1  # recode each externalizing item into this column
+data$externalizing02d <- 0 # compute specific inaccuracy for item
+data[which(data$RMETrialList==02 & data$resp4==1), "externalizing02d"] <- 1 # recode item into new externalizing variable
+data[which(data$RMETrialList == 02 & data$resp4==1), "RMEStim.Externalizing"] <- 1  # recode each externalizing item into this column
+
+# 5a, 5b, 5d(rc)
+# Item 5:
+  # a = irritated (EXT) (weak list)
+  # b = sarcastic (EXT) (weak list)
+  # c = worried (CORRECT)
+  # d = friendly (EXT, rc) (strong list)
+data$externalizing05a <- 0 # compute specific inaccuracy for item
+data[which(data$RMETrialList==05 & data$resp1==1), "externalizing05a"] <- 1 # recode item into new externalizing variable
+data[which(data$RMETrialList == 05 & data$resp1==1), "RMEStim.Externalizing"] <- 1  # recode each externalizing item into this column
+data$externalizing05b <- 0 # compute specific inaccuracy for item
+data[which(data$RMETrialList==05 & data$resp2==1), "externalizing05b"] <- 1 # recode item into new externalizing variable
+data[which(data$RMETrialList == 05 & data$resp2==1), "RMEStim.Externalizing"] <- 1  # recode each externalizing item into this column
+data$externalizing05d <- 0 # compute specific inaccuracy for item
+data[which(data$RMETrialList==05 & data$res4==1), "externalizing05d"] <- -1 # recode item into new externalizing variable
+data[which(data$RMETrialList == 05 & data$resp4==1), "RMEStim.Externalizing"] <- -1  # recode each externalizing item into this column
+
+# 7b(rc)
+# Item 7:
+  # a = apologetic 
+  # b = friendly (EXT, rc) (strong list)
+  # c = uneasy (CORRECT)
+  # d = dispirited 
+data$externalizing07 <- 0 # compute specific inaccuracy for item
+data[which(data$RMETrialList==07 & data$resp2==1), "externalizing07"] <- -1 # recode item into new externalizing variable
+data[which(data$RMETrialList == 07 & data$resp2==1), "RMEStim.Externalizing"] <- -1  # recode each externalizing item into this column
+
+# 8a
+# Item 8:
+  # a = despondent (EXT) (CORRECT) (weak list)
+  # b = relieved 
+  # c = shy 
+  # d = excited 
+data$externalizing08 <- 0 # compute specific inaccuracy for item
+data[which(data$RMETrialList==08 & data$resp1==1), "externalizing08"] <- 1 # recode item into new externalizing variable
+data[which(data$RMETrialList == 08 & data$resp1==1), "RMEStim.Externalizing"] <- 1  # recode each externalizing item into this column
+
+# 9a, 9b
+# Item 9:
+  # a = annoyed (EXT) (weak list)
+  # b = hostile (EXT) (strong list)
+  # c = horrified 
+  # d = preoccupied (CORRECT)
+data$externalizing09a <- 0 # compute specific inaccuracy for item
+data[which(data$RMETrialList==09 & data$resp1==1), "externalizing09a"] <- 1 # recode item into new externalizing variable
+data[which(data$RMETrialList == 09 & data$resp1==1), "RMEStim.Externalizing"] <- 1  # recode each externalizing item into this column
+data$externalizing09b <- 0 # compute specific inaccuracy for item
+data[which(data$RMETrialList==09 & data$resp2==1), "externalizing09b"] <- 1 # recode item into new externalizing variable
+data[which(data$RMETrialList == 09 & data$resp2==1), "RMEStim.Externalizing"] <- 1  # recode each externalizing item into this column
+
+# 11d(rc)
+# Item 11:
+  # a = terrified 
+  # b = amused 
+  # c = regretful  (CORRECT)
+  # d = flirtatious (EXT) (weak list)
+data$externalizing11 <- 0 # compute specific inaccuracy for item
+data[which(data$RMETrialList==11 & data$resp4==1), "externalizing11"] <- -1 # recode item into new externalizing variable
+data[which(data$RMETrialList == 11 & data$resp4==1), "RMEStim.Externalizing"] <- -1  # recode each externalizing item into this column
+
+# 13c
+# Item 13:
+  # a = decisive 
+  # b = anticipating (CORRECT)
+  # c = threatening (EXT) (strong list)
+  # d = shy 
+data$externalizing13 <- 0 # compute specific inaccuracy for item
+data[which(data$RMETrialList==13 & data$resp3==1), "externalizing13"] <- -1 # recode item into new externalizing variable
+data[which(data$RMETrialList == 13 & data$resp3==1), "RMEStim.Externalizing"] <- -1  # recode each externalizing item into this column
+
+# 14a, 14d
+# Item 14:
+  # a = irritated (EXT) (weak list)
+  # b = disappointed 
+  # c = depressed 
+  # d = accusing (EXT) (CORRECT) (strong list)
+data$externalizing14a <- 0 # compute specific inaccuracy for item
+data[which(data$RMETrialList==14 & data$resp1==1), "externalizing14a"] <- 1 # recode item into new externalizing variable
+data[which(data$RMETrialList == 14 & data$resp1==1), "RMEStim.Externalizing"] <- 1  # recode each externalizing item into this column
+
+data$externalizing14d <- 0 # compute specific inaccuracy for item
+data[which(data$RMETrialList==14 & data$resp4==1), "externalizing14d"] <- 1 # recode item into new externalizing variable
+data[which(data$RMETrialList == 14 & data$resp4==1), "RMEStim.Externalizing"] <- 1  # recode each externalizing item into this column
+
+# 15c(rc)
+# Item 15:
+  # a = contemplative (CORRECT)
+  # b = flustered
+  # c = encouraging (EXT, rc) (strong list)
+  # d = amused 
+data$externalizing15 <- 0 # compute specific inaccuracy for item
+data[which(data$RMETrialList==15 & data$resp3==1), "externalizing15"] <- -1 # recode item into new externalizing variable
+data[which(data$RMETrialList == 15 & data$resp3==1), "RMEStim.Externalizing"] <- -1  # recode each externalizing item into this column
+
+# 16a, 16c(rc), 16d(rc)
+# Item 16:
+  # a = irritated (EXT) (weak list)
+  # b = thoughtful (CORRECT)
+  # c = encouraging (EXT, rc) (strong list)
+  # d = sympathetic (EXT, rc) (weak list)
+data$externalizing16a <- 0 # compute specific inaccuracy for item
+data[which(data$RMETrialList==16 & data$resp1==1), "externalizing16a"] <- 1 # recode item into new externalizing variable
+data[which(data$RMETrialList == 16 & data$resp1==1), "RMEStim.Externalizing"] <- 1  # recode each externalizing item into this column
+data$externalizing16c <- 0 # compute specific inaccuracy for item
+data[which(data$RMETrialList==16 & data$resp3==1), "externalizing16c"] <- -1 # recode item into new externalizing variable
+data[which(data$RMETrialList == 16 & data$resp3==1), "RMEStim.Externalizing"] <- -1  # recode each externalizing item into this column
+data$externalizing16d <- 0 # compute specific inaccuracy for item
+data[which(data$RMETrialList==16 & data$resp4==1), "externalizing16d"] <- -1 # recode item into new externalizing variable
+data[which(data$RMETrialList == 16 & data$resp4==1), "RMEStim.Externalizing"] <- -1  # recode each externalizing item into this column
+
+# 17b (rc)
+# Item 17:
+  # a = doubtful (correct)
+  # b = affectionate (EXT, rc) (weak list)
+  # c = playful 
+  # d = aghast 
+data$externalizing17 <- 0 # compute specific inaccuracy for item
+data[which(data$RMETrialList==17 & data$resp2==1), "externalizing17"] <- -1 # recode item into new externalizing variable
+data[which(data$RMETrialList == 17 & data$resp2==1), "RMEStim.Externalizing"] <- -1  # recode each externalizing item into this column
+
+# 19a, 19c
+# Item 19: 
+  # a = arrogant (EXT) (weak list)
+  # b = grateful 
+  # c = sarcastic (EXT) (weak list)
+  # d = tentative (CORRECT)
+data$externalizing19a <- 0 # compute specific inaccuracy for item
+data[which(data$RMETrialList==19 & data$resp1==1), "externalizing19a"] <- 1 # recode item into new externalizing variable
+data[which(data$RMETrialList == 19 & data$resp1==1), "RMEStim.Externalizing"] <- 1  # recode each externalizing item into this column
+data$externalizing19c <- 0 # compute specific inaccuracy for item
+data[which(data$RMETrialList==19 & data$resp3==1), "externalizing19c"] <- 1 # recode item into new externalizing variable
+data[which(data$RMETrialList == 19 & data$resp3==1), "RMEStim.Externalizing"] <- 1  # recode each externalizing item into this column
+
+# 20b
+# Item 20 
+  # a = dominant 
+  # b = friendly (EXT) (CORRECT) (strong list)
+  # c = guilty 
+  # d = horrified 
+data$externalizing20 <- 0 # compute specific inaccuracy for item
+data[which(data$RMETrialList==20 & data$resp2==1), "externalizing20"] <- 1 # recode item into new externalizing variable
+data[which(data$RMETrialList == 20 & data$resp2==1), "RMEStim.Externalizing"] <- 1  # recode each externalizing item into this column
+
+# 24b, 24d
+# Item 24:
+  # a = pensive (CORRECT)
+  # b = irritated (EXT) (weak list)
+  # c = excited 
+  # d = hostile (EXT) (strong list)
+data$externalizing24b <- 0 # compute specific inaccuracy for item
+data[which(data$RMETrialList==24 & data$resp2==1), "externalizing24b"] <- 1 # recode item into new externalizing variable
+data[which(data$RMETrialList == 24 & data$resp2==1), "RMEStim.Externalizing"] <- 1  # recode each externalizing item into this column
+data$externalizing24d <- 0 # compute specific inaccuracy for item
+data[which(data$RMETrialList==24 & data$resp4==1), "externalizing24d"] <- 1 # recode item into new externalizing variable
+data[which(data$RMETrialList == 24 & data$resp4==1), "RMEStim.Externalizing"] <- 1  # recode each externalizing item into this column
+
+# 26c
+# Item 26:
+  # a = alarmed
+  # b = shy 
+  # c = hostile (EXT) (CORRECT) (strong list)
+  # d = anxious 
+data$externalizing26 <- 0 # compute specific inaccuracy for item
+data[which(data$RMETrialList==26 & data$resp3==1), "externalizing26"] <- 1 # recode item into new externalizing variable
+data[which(data$RMETrialList == 26 & data$resp3==1), "RMEStim.Externalizing"] <- 1  # recode each externalizing item into this column
+
+# 27c, 27d(rc)
+# Item 27:
+  # a = joking 
+  # b = cautious (CORRECT)
+  # c = arrogant (EXT)(weak list)
+  # d = reassuring (EXT, rc) (weak list)
+data$externalizing27c <- 0 # compute specific inaccuracy for item
+data[which(data$RMETrialList==27 & data$resp3==1), "externalizing27c"] <- 1 # recode item into new externalizing variable
+data[which(data$RMETrialList == 27 & data$resp3==1), "RMEStim.Externalizing"] <- 1  # recode each externalizing item into this column
+data$externalizing27d <- 0 # compute specific inaccuracy for item
+data[which(data$RMETrialList==27 & data$resp4==1), "externalizing27d"] <- -1 # recode item into new externalizing variable
+data[which(data$RMETrialList == 27 & data$resp4==1), "RMEStim.Externalizing"] <- -1  # recode each externalizing item into this column
+
+# 28c(rc)
+# Item 28
+  # a = interested (CORRECT)
+  # b = joking 
+  # c = affectionate (EXT, rc) (weak list)
+  # d = contented 
+data$externalizing28 <- 0 # compute specific inaccuracy for item
+data[which(data$RMETrialList==28 & data$resp28==3), "externalizing28"] <- -1 # recode item into new externalizing variable
+data[which(data$RMETrialList == 28 & data$resp28==3), "RMEStim.Externalizing"] <- -1  # recode each externalizing item into this column
+
+# 29c
+# Item 29: 
+  # a = impatient 
+  # b = aghast
+  # c = irritated (EXT) (weak list)
+  # d = reflective (CORRECT)
+data$externalizing29 <- 0 # compute specific inaccuracy for item
+data[which(data$RMETrialList==29 & data$resp3==1), "externalizing29"] <- 1 # recode item into new externalizing variable
+data[which(data$RMETrialList == 29 & data$resp3==1), "RMEStim.Externalizing"] <- 1  # recode each externalizing item into this column
+
+# 30b(rc), 30c
+# Item 30
+ # a = grateful 
+  # b = flirtatious (EXT, rc) (CORRECT) (weak list)
+  # c = hostile (EXT) (strong list)
+  # d = disappointed 
+data$externalizing30b <- 0 # compute specific inaccuracy for item
+data[which(data$RMETrialList==30 & data$resp2==1), "externalizing30b"] <- -1 # recode item into new externalizing variable
+data[which(data$RMETrialList == 30 & data$resp2==1), "RMEStim.Externalizing"] <- -1  # recode each externalizing item into this column
+data$externalizing30c <- 0 # compute specific inaccuracy for item
+data[which(data$RMETrialList==30 & data$resp3==1), "externalizing30c"] <- 1 # recode item into new externalizing variable
+data[which(data$RMETrialList == 30 & data$resp3==1), "RMEStim.Externalizing"] <- 1  # recode each externalizing item into this column
+
+# 34c
+# Item 34:
+  # a = alarmed
+  # b = shy 
+  # c = hostile (EXT) (CORRECT) (strong list)
+  # d = anxious 
+data$externalizing34 <- 0 # compute specific inaccuracy for item
+data[which(data$RMETrialList==34 & data$resp3==1), "externalizing34"] <- 1 # recode item into new externalizing variable
+data[which(data$RMETrialList == 34 & data$resp3==1), "RMEStim.Externalizing"] <- 1  # recode each externalizing item into this column
+
+# 36c
+# Item 36:
+  # a = ashamed 
+  # b = nervous 
+  # c = suspicious (EXT) (CORRECT) (strong list)
+  # d = indecisive 
+data$externalizing36 <- 0 # compute specific inaccuracy for item
+data[which(data$RMETrialList==36 & data$resp3==1), "externalizing36"] <- 1 # recode item into new externalizing variable
+data[which(data$RMETrialList == 36 & data$resp3==1), "RMEStim.Externalizing"] <- 1  # recode each externalizing item into this column
+
+#######
+
+## Put all the items together:
+data$RME_externalizing_scores   <- rowSums(cbind(data$externalizing01b, data$externalizing01c, data$externalizing02c, data$externalizing02d,
+                                                 data$externalizing05a, data$externalizing05b, data$externalizing05d, data$externalizing07,
+                                                 data$externalizing08,  data$externalizing09a, data$externalizing09b, data$externalizing11,
+                                                 data$externalizing13, data$externalizing14a,   data$externalizing14d, data$externalizing15, data$externalizing16a, data$externalizing16c, data$externalizing16d,
+  data$externalizing17, data$externalizing19a, data$externalizing19c, data$externalizing20, data$externalizing24b,
+ data$externalizing24d, data$externalizing26, data$externalizing27c, data$externalizing27d, data$externalizing28,
+ data$externalizing29, data$externalizing30b, data$externalizing30c, data$externalizing34, data$externalizing36
+                                   )) # Create score by manually summing over the relevant variables created above
+names(data)
+psych::describe(data[,])
+
+data<-data%>%group_by(id)%>%mutate(RME_externalizing_total=sum(RME_externalizing_scores))%>%ungroup()
+data$RME_externalizing_total # RME_externalizing_total gives the total number of responses to faces identified using the externalizing word
+
+
+
+## Externalizing STRONG list ONLY (new variable) from above:
+data$RME_externalizing_scores_STRONGonly <- rowSums(cbind(data$externalizing01b, data$externalizing05d, data$externalizing07,
+                                                          data$externalizing09b, data$externalizing13, data$externalizing14d,
+                                                          data$externalizing15,data$externalizing16c,data$externalizing20,
+                                                          data$externalizing24d,data$externalizing26,data$externalizing30c,
+                                                          data$externalizing34,data$externalizing36))
+names(data)
+psych::describe(data[,])
+  
+ data<-data%>%group_by(id)%>%mutate(RME_externalizing_total_STRONGlist=sum(RME_externalizing_scores_STRONGonly))%>%ungroup()
+data$RME_externalizing_total_STRONGlist
+  
+###############################################################################
+##### internalizing: PB, RB, DOT
+## strong: arrogant, confident, dominant, hostile
+## weak: aghast, alarmed, apologetic(rc), convinced, decisive, defiant, embarrassed, horrified, indecisive, insisting, regretful, sarcastic, tentative, terrified
+
+# 2a, 2c
+# Item 2:
+  # a = terrified (INT) (weak)
+  # b = upset (CORRECT)
+  # c = arrogant (INT) (strong)
+  # d = annoyed 
+data$internalizing02a <- 0 # compute specific inaccuracy for item
+data[which(data$RMETrialList==02 & data$resp1==1), "internalizing02a"] <- 1 # recode item into new externalizing variable
+data[which(data$RMETrialList == 02 & data$resp1==1), "RMEStim.Internalizing"] <- 1  # recode each externalizing item into this column
+data$internalizing02c <- 0 # compute specific inaccuracy for item
+data[which(data$RMETrialList==02 & data$resp3==1), "internalizing02c"] <- 1 # recode item into new externalizing variable
+data[which(data$RMETrialList == 02 & data$resp3==1), "RMEStim.Internalizing"] <- 1  # recode each externalizing item into this column
+
+# 3b, 3d
+# Item 3:
+  # a = joking
+  # b = flustered (INT) (weak)
+  # c = desire (CORRECT)
+  # d = convinced (INT) (weak)
+data$internalizing03b <- 0 # compute specific inaccuracy for item
+data[which(data$RMETrialList==03 & data$resp2==1), "internalizing03b"] <- 1 # recode item into new externalizing variable
+data[which(data$RMETrialList == 03 & data$resp2==1), "RMEStim.Internalizing"] <- 1  # recode each externalizing item into this column
+data$internalizing03d <- 0 # compute specific inaccuracy for item
+data[which(data$RMETrialList==03 & data$resp4==1), "internalizing03d"] <- 1 # recode item into new externalizing variable
+data[which(data$RMETrialList == 03 & data$resp4==1), "RMEStim.Internalizing"] <- 1  # recode each externalizing item into this column
+
+# 4b
+# Item 4:
+  # a = joking
+  # b = insisting (INT) (weak)
+  # c = amused
+  # d = relaxed
+data$internalizing04 <- 0 # compute specific inaccuracy for item
+data[which(data$RMETrialList==04 & data$resp2==1), "internalizing04"] <- 1 # recode item into new externalizing variable
+data[which(data$RMETrialList == 04 & data$resp2==1), "RMEStim.Internalizing"] <- 1  # recode each externalizing item into this column
+
+# 7a, rc
+# Item 7:
+  # a = apologetic (INT) (weak)
+  # b = friendly 
+  # c = uneasy  (CORRECT)
+  # d = dispirited 
+data$internalizing07 <- 0 # compute specific inaccuracy for item 
+data[which(data$RMETrialList == 7 & data$resp1 == 1),"internalizing07"] <- -1 
+data[which(data$RMETrialList == 7 & data$resp1 == 1),"RMEStim.Inacc.Internal"] <- -1 
+
+# 8c
+# Item 8:
+  # a = despondent (CORRECT)
+  # b = relieved 
+  # c = shy (INT) (strong)
+  # d = excited 
+data$internalizing08 <- 0 # compute specific inaccuracy for item 
+data[which(data$RMETrialList == 8 & data$resp3 == 1),"internalizing"] <- 1 
+data[which(data$RMETrialList == 8 & data$resp3 == 1),"RMEStim.Inacc.Internal"] <- 1 
+
+# 10b
+# Item 10:
+  # a = cautious (CORRECT)
+  # b = insisting (INT) (weak)
+  # c = bored 
+  # d = aghast 
+data$internalizing10 <- 0 # compute specific inaccuracy for item 
+data[which(data$RMETrialList == 10 & data$resp2 == 1),"internalizing10"] <- 1 
+data[which(data$RMETrialList == 10 & data$resp2 == 1),"RMEStim.Inacc.Internal"] <- 1 
+
+# 11a, 11c
+# Item 11:
+  # a = terrified (INT) (weak)
+  # b = amused 
+  # c = regretful (INT) (CORRECT) (weak)
+  # d = flirtatious 
+data$internalizing11a <- 0 # compute specific inaccuracy for item 
+data[which(data$RMETrialList == 11 & data$resp1 == 1),"internalizing11a"] <- 1 
+data[which(data$RMETrialList == 11 & data$resp1 == 1),"RMEStim.Inacc.Internal"] <- 1 
+data$internalizing11c <- 0 # compute specific inaccuracy for item 
+data[which(data$RMETrialList == 11 & data$resp3 == 1),"internalizing11c"] <- 1 
+data[which(data$RMETrialList == 11 & data$resp3 == 1),"RMEStim.Inacc.Internal"] <- 1 
+
+# 12b
+# Item 12:
+  # a = indifferent 
+  # b = embarrassed (INT) (weak)
+  # c = sceptical (CORRECT)
+  # d = dispirited
+data$internalizing12 <- 0 # compute specific inaccuracy for item 
+data[which(data$RMETrialList == 12 & data$resp2 == 1),"internalizing12"] <- 1 
+data[which(data$RMETrialList == 12 & data$resp2 == 1),"RMEStim.Inacc.Internal"] <- 1 
+
+# 13d
+# Item 13:
+  # a = decisive
+  # b = anticipating (CORRECT)
+  # c = threatening 
+  # d = shy (INT) (strong)
+data$internalizing13 <- 0 # compute specific inaccuracy for item 
+data[which(data$RMETrialList == 13 & data$resp4 == 1),"internalizing13"] <- 1 
+data[which(data$RMETrialList == 13 & data$resp4 == 1),"RMEStim.Inacc.Internal"] <- 1 
+
+# 15b
+# Item 15:
+  # a = contemplative (CORRECT)
+  # b = flustered (INT) (weak)
+  # c = encouraging 
+  # d = amused 
+data$internalizing15 <- 0 # compute specific inaccuracy for item 
+data[which(data$RMETrialList == 15 & data$resp2 == 1),"internalizing15"] <- 1 
+data[which(data$RMETrialList == 15 & data$resp2 == 1),"RMEStim.Inacc.Internal"] <- 1 
+
+# 19a
+# Item 19: 
+  # a = arrogant (INT) (strong)
+  # b = grateful 
+  # c = sarcastic 
+  # d = tentative (CORRECT)
+data$internalizing19 <- 0 # compute specific inaccuracy for item 
+data[which(data$RMETrialList == 13 & data$resp1 == 1),"internalizing19"] <- 1 
+data[which(data$RMETrialList == 13 & data$resp1 == 1),"RMEStim.Inacc.Internal"] <- 1 
+
+# 20a, 20c
+# Item 20 
+  # a = dominant (INT) (strong)
+  # b = friendly (CORRECT)
+  # c = guilty (INT) (weak)
+  # d = horrified 
+data$internalizing20a <- 0 # compute specific inaccuracy for item 
+data[which(data$RMETrialList == 20 & data$resp1 == 1),"internalizing20a"] <- 1 
+data[which(data$RMETrialList == 20 & data$resp1 == 1),"RMEStim.Inacc.Internal"] <- 1 
+data$internalizing20c <- 0 # compute specific inaccuracy for item 
+data[which(data$RMETrialList == 20 & data$resp3 == 1),"internalizing20a"] <- 1 
+data[which(data$RMETrialList == 20 & data$resp3 == 1),"RMEStim.Inacc.Internal"] <- 1 
+
+# 21a
+# Item 21: 
+  # a = embarrassed (INT) (weak)
+  # b = fantasizing (CORRECT)
+  # c = confused 
+  # d = panicked 
+data$internalizing21 <- 0 # compute specific inaccuracy for item 
+data[which(data$RMETrialList == 21 & data$resp1 == 1),"internalizing21"] <- 1 
+data[which(data$RMETrialList == 21 & data$resp1 == 1),"RMEStim.Inacc.Internal"] <- 1 
+
+# 22c
+# Item 22:
+  # a = preoccupied (CORRECT)
+  # b = grateful 
+  # c = insisting (INT) (weak)
+  # d = imploring 
+data$internalizing22 <- 0 # compute specific inaccuracy for item 
+data[which(data$RMETrialList == 22 & data$resp3 == 1),"internalizing22"] <- 1 
+data[which(data$RMETrialList == 22 & data$resp3 == 1),"RMEStim.Inacc.Internal"] <- 1 
+
+# 23b, 23c
+# Item 23:
+  # a = contented
+  # b = apologetic (weak, rc)
+  # c = defiant (weak)
+  # d = curious 
+data$internalizing23b <- 0 # compute specific inaccuracy for item 
+data[which(data$RMETrialList == 23 & data$resp2 == 1),"internalizing23b"] <- -1 
+data[which(data$RMETrialList == 23 & data$resp2 == 1),"RMEStim.Inacc.Internal"] <- -1 
+data$internalizing23c <- 0 # compute specific inaccuracy for item 
+data[which(data$RMETrialList == 23 & data$resp3 == 1),"internalizing23c"] <- 1 
+data[which(data$RMETrialList == 23 & data$resp3 == 1),"RMEStim.Inacc.Internal"] <- 1 
+
+# 26b, 26d
+# Item 26:
+  # a = alarmed 
+  # b = shy (INT) (strong)
+  # c = hostile (CORRECT)
+  # d = anxious (INT) (strong)
+data$internalizing26b <- 0 # compute specific inaccuracy for item 
+data[which(data$RMETrialList == 26 & data$resp2 == 1),"internalizing26b"] <- 1 
+data[which(data$RMETrialList == 26 & data$resp2 == 1),"RMEStim.Inacc.Internal"] <- 1 
+data$internalizing26d <- 0 # compute specific inaccuracy for item 
+data[which(data$RMETrialList == 26 & data$resp4 == 1),"internalizing26d"] <- 1 
+data[which(data$RMETrialList == 26 & data$resp4 == 1),"RMEStim.Inacc.Internal"] <- 1 
+
+# 27c
+# Item 27:
+  # a = joking 
+  # b = cautious (CORRECT)
+  # c = arrogant (INT) (strong)
+  # d = reassuring 
+data$internalizing27 <- 0 # compute specific inaccuracy for item 
+data[which(data$RMETrialList == 27 & data$resp3 == 1),"internalizing27"] <- 1 
+data[which(data$RMETrialList == 27 & data$resp3 == 1),"RMEStim.Inacc.Internal"] <- 1 
+
+# 31b
+# Item 31:
+  # a = ashamed
+  # b = confident (INT) (strong)
+  # c = joking
+  # d = dispirited
+data$internalizing31 <- 0 # compute specific inaccuracy for item 
+data[which(data$RMETrialList == 31 & data$resp2 == 1),"internalizing31"] <- 1 
+data[which(data$RMETrialList == 31 & data$resp2 == 1),"RMEStim.Inacc.Internal"] <- 1 
+
+# 33a, 33b
+# Item 33:
+  # a = embarrassed (INT) (weak)
+  # b = guilty (INT) (strong)
+  # c = fantasizing
+  # d = concerned
+data$internalizing33a <- 0 # compute specific inaccuracy for item 
+data[which(data$RMETrialList == 33 & data$resp1 == 1),"internalizing33a"] <- 1 
+data[which(data$RMETrialList == 33 & data$resp1 == 1),"RMEStim.Inacc.Internal"] <- 1 
+data$internalizing33b <- 0 # compute specific inaccuracy for item 
+data[which(data$RMETrialList == 33 & data$resp2 == 1),"internalizing33b"] <- 1 
+data[which(data$RMETrialList == 33 & data$resp2 == 1),"RMEStim.Inacc.Internal"] <- 1 
+
+# 34d
+# Item 34:
+  # a = aghast
+  # b = baffled 
+  # c = distrustful (CORRECT)
+  # d = terrified (INT) (weak)
+data$internalizing34 <- 0 # compute specific inaccuracy for item 
+data[which(data$RMETrialList == 34 & data$resp4 == 1),"internalizing34"] <- 1 
+data[which(data$RMETrialList == 34 & data$resp4 == 1),"RMEStim.Inacc.Internal"] <- 1 
+
+# 35c
+# Item 35
+  # a = puzzled
+  # b = nervous  (CORRECT)
+  # c = insisting (INT) (weak)
+  # d = contemplative 
+data$internalizing35 <- 0 # compute specific inaccuracy for item 
+data[which(data$RMETrialList == 35 & data$resp3 == 1),"internalizing35"] <- 1 
+data[which(data$RMETrialList == 35 & data$resp3 == 1),"RMEStim.Inacc.Internal"] <- 1 
+
+#######
+
+## Put all the items together:
+data$RME_internalizing_scores   <- rowSums(cbind(data$internalizing02a, data$internalizing02c, data$internalizing03b, data$internalizing03d,
+                                                 data$internalizing04, data$internalizing07, data$internalizing08, data$internalizing10,
+                                                 data$internalizing11a, data$internalizing11c, data$internalizing12, data$internalizing13, 
+                                                 data$internalizing15, data$internalizing19, data$internalizing20a, data$internalizing20c,
+                                                 data$internalizing21, data$internalizing22, data$internalizing23b, data$internalizing23c,
+                                                 data$internalizing26b, data$internalizing26d, data$internalizing27, data$internalizing31,
+                                                 data$internalizing33a, data$internalizing33b, data$internalizing34, data$internalizing35)) # Create score by manually summing over the relevant variables created above
+names(data)
+psych::describe(data[,])
+
+data<-data%>%group_by(id)%>%mutate(RME_internalizing_total=sum(RME_internalizing_scores))%>%ungroup()
+data$RME_internalizing_total # RME_internalizing_total gives the total number of responses to faces identified using the internalizing word
+
+
+## Internalizing STRONG list (new variable) from above
+data$RME_internalizing_scores_STRONGonly <- rowSums(cbind(data$internalizing02c,
+data$internalizing08, 
+data$internalizing13,
+data$internalizing19, 
+data$internalizing20a, 
+data$internalizing26b,
+data$internalizing26d, 
+data$internalizing27,
+data$internalizing31,
+data$internalizing33b))
+names(data)
+psych::describe(data[,])
+  
+ data<-data%>%group_by(id)%>%mutate(RME_internalizing_total_STRONGlist=sum(RME_internalizing_scores_STRONGonly))%>%ungroup()
+data$RME_internalizing_total_STRONGlist  
+  
+
+##############################################################################
+##### powerlessness: SD
+## strong: (none)
+## weak: apologetic (rc), ashamed (rc), defiant (rc), guilty, worried
+
+# 5c
+# Item 5:
+  # a = irritated
+  # b = sarcastic 
+  # c = worried (POW) (CORRECT)
+  # d = friendly 
+data$pow05 <- 0 # compute specific inaccuracy for item 
+data[which(data$RMETrialList == 5 & data$resp3 == 1),"pow05"] <- 1 
+data[which(data$RMETrialList == 5 & data$resp3 == 1),"RMEStim.Inacc.Pow"] <- 1 
+
+# 7a
+# Item 7:
+  # a = apologetic (POW)
+  # b = friendly 
+  # c = uneasy (CORRECT)
+  # d = dispirited 
+data$pow07 <- 0 # compute specific inaccuracy for item 
+data[which(data$RMETrialList == 7 & data$resp1 == 1),"pow07"] <- 1 
+data[which(data$RMETrialList == 7 & data$resp1 == 1),"RMEStim.Inacc.Pow"] <- 1 
+
+# 23b, 23c
+# Item 23:
+  # a = contented
+  # b = apologetic
+  # c = defiant
+  # d = curious 
+data$pow23b <- 0 # compute specific inaccuracy for item 
+data[which(data$RMETrialList == 23 & data$resp2 == 1),"pow23b"] <- 1 
+data[which(data$RMETrialList == 23 & data$resp2 == 1),"RMEStim.Inacc.Pow"] <- 1 
+data$pow23c <- 0 # compute specific inaccuracy for item 
+data[which(data$RMETrialList == 23 & data$resp3 == 1),"pow23c"] <- 1 
+data[which(data$RMETrialList == 23 & data$resp3 == 1),"RMEStim.Inacc.Pow"] <- 1 
+
+# 31a
+# Item 31:
+  # a = ashamed (POW)
+  # b = confident 
+  # c = joking
+  # d = dispirited
+data$pow31 <- 0 # compute specific inaccuracy for item 
+data[which(data$RMETrialList == 31 & data$resp1 == 1),"pow31"] <- 1 
+data[which(data$RMETrialList == 31 & data$resp1 == 1),"RMEStim.Inacc.Pow"] <- 1 
+
+# 33b
+# Item 33:
+  # a = embarrassed 
+  # b = guilty (POW)
+  # c = fantasizing
+  # d = concerned
+data$pow33 <- 0 # compute specific inaccuracy for item 
+data[which(data$RMETrialList == 33 & data$resp2 == 1),"pow33"] <- 1 
+data[which(data$RMETrialList == 33 & data$resp2 == 1),"RMEStim.Inacc.Pow"] <- 1 
+
+# 36a
+# Item 36:
+  # a = ashamed (POW)
+  # b = nervous
+  # c = suspicious (CORRECT)
+  # d = indecisive 
+data$pow36 <- 0 # compute specific inaccuracy for item 
+data[which(data$RMETrialList == 36 & data$resp1 == 1),"pow36"] <- 1 
+data[which(data$RMETrialList == 36 & data$resp1 == 1),"RMEStim.Inacc.Pow"] <- 1 
+
+#######
+
+## Put all the items together:
+data$RME_powerlessness_scores   <- rowSums(cbind(data$pow05, data$pow07, data$pow23b, data$pow23c, data$pow31,
+                                                 data$pow33, data$pow36
+                                                )) # Create score by manually summing over the relevant variables created above
+names(data)
+psych::describe(data[,])
+
+data<-data%>%group_by(id)%>%mutate(RME_powerlessness_total=sum(RME_powerlessness_scores))%>%ungroup()
+data$RME_powerlessness_total # RME_internalizing_total gives the total number of responses to faces identified using the internalizing word
+
+```
+
+Look at last 3 variables created (3 factors of JMs)
+```{r}
+data$RME_externalizing_scores 
+data$RME_externalizing_total 
+data$RME_externalizing_total_STRONGlist
+
+data$RME_internalizing_scores 
+data$RME_internalizing_total 
+data$RME_internalizing_total_STRONGlist
+
+data$RME_powerlessness_scores 
+data$RME_powerlessness_total 
+# (all factor 3 words considered 'weak')
+
+head(data)
+```
+Reshape data so each row corresponds with each unique ID 
+```{r}
+#install.packages("tidyverse") 
+library(tidyverse)
+
+names(data)
+
+newdata <- data %>% select(c("id", "RMETrialList", "Session", "Group", "totagg", "SessionDate", "SessionTime", "TotalAcc",
+                                 "RME_negativeAcc_scores", "RME_negativeAcc_total", # Hypothesis 1a variables
+                                 "RME_positiveAcc_scores", "RME_positiveAcc_total", # Hypothesis 1b variables
+                                 "RME_neutralAcc_scores", "RME_neutralAcc_total", # Hypothesis 1c variables
+                                 "neutralItem_negInaccscores", "RMEneutralItemNegInacc_total", # Hypothesis 2 variables
+                                 "totalExplicitAggressionScore", "RME_negativeAcc_total", # Hypothesis 3 variables
+                                 "RME_positiveAcc_total", # Hypothesis 4 variables
+                                 "itemThreatScores", "RMEThreatScore_total", # Threat detection variables (exploratory)
+                                "RME_internalizing_total", "RME_externalizing_total", "RME_powerlessness_total",
+                             "RME_externalizing_total_STRONGlist", "RME_internalizing_total_STRONGlist", # 3 factor CRTA
+                             "age.x", "sex.x", "sexorientation.x", "numsiblings.x", "practicerelig.x", "doyouwork.x", # demographics
+                             "F1", "F2", "F3",
+                             "Q10.x")) 
+
+
+#?pivot_wider #this is apparently the new version of dplyr::gather()
+#?spread
+library(tidyr)
+newdata.ordered <- newdata %>% dplyr::arrange(id, RMETrialList) %>% dplyr::filter(id != 5028) # participant 5028 had multiple identical submissions, so removed
+
+widedata <- newdata.ordered %>% pivot_wider(names_from = RMETrialList, values_from=c(RME_negativeAcc_scores,RME_positiveAcc_scores,RME_neutralAcc_scores, neutralItem_negInaccscores,itemThreatScores))
+
+names(widedata)
+```
+
+
+All hypotheses combined below:
+```{r}
+## Convert from wide to long (All relevant variables included in the following code):
+
+df_bysubject <- widedata
+
+df_bysubject$trichot_CRTA <- 
+  case_when(df_bysubject$totagg<4 ~ "low implicit agg",
+            df_bysubject$totagg>3 & df_bysubject$totagg<9 ~"med implicit agg",
+            df_bysubject$totagg>8 ~ "high implicit agg")
+count(df_bysubject, trichot_CRTA)
+
+df_bysubject$dichot_CRTA <- 
+  case_when(df_bysubject$totagg<8 ~ "lower implicit agg",
+            df_bysubject$totagg>8 ~ "higher implicit agg")
+count(df_bysubject, dichot_CRTA)
+
+head(df_bysubject)
+
+## Full model
+#############################################################################
+fullModel <- lm(data=widedata, totagg ~ RME_negativeAcc_total + #H1a
+                  RME_positiveAcc_total + #H1b
+                  RME_neutralAcc_total + #H1c
+                  RMEneutralItemNegInacc_total + #H2
+                  totalExplicitAggressionScore + #H3 & H4
+                  RMEThreatScore_total + # Threat detection
+                  RME_externalizing_total+
+                  RME_internalizing_total+
+                  RME_powerlessness_total+
+                  RME_externalizing_total_STRONGlist+
+                  RME_internalizing_total_STRONGlist+
+                  age.x+
+                  sex.x)
+summary(fullModel)
+
+# Hypothesis 1 individual models/cor tests
+######################################################
+# H1-------------------------------------------------------
+# Fitted linear model
+lmH1a <- 
+  lm(df_bysubject$RME_negativeAcc_total ~ df_bysubject$totagg)
+summary(lmH1a)
+
+# Correlation test
+cor.test(df_bysubject$RME_negativeAcc_total,df_bysubject$totagg) 
+# regress totagg on RME negative item accuracy score
+## FINAL: r=-0.07, p=0.46 (NOT SIG)
+
+# H2-------------------------------------------------------
+# Fitted linear model
+lmH1b <- 
+  lm(df_bysubject$RME_positiveAcc_total ~ df_bysubject$totagg)
+summary(lmH1b)
+      
+# Correlation test
+cor.test(df_bysubject$totagg, 
+         df_bysubject$RME_positiveAcc_total) # regress totagg on RME positive-item accuracy score
+## FINAL: -0.16, p=0.09 (NOT SIG)
+
+# H3-------------------------------------------------------
+# Fitted linear model
+lmH1c <- 
+  lm(df_bysubject$RME_neutralAcc_total ~ df_bysubject$totagg)
+summary(lmH1c)
+      
+# Correlation test
+cor.test(df_bysubject$RME_neutralAcc_total,df_bysubject$totagg) # regress totagg on RME neutral-item accuracy score
+## FINAL: (r= -0.07, p=0.44) (NOT SIG)
+cor.test(df_bysubject$totagg, 
+         df_bysubject$RME_neutralAcc_total)
+
+
+# Hypothesis 4 individual model/cor test
+###########################################################
+
+# implicit mta and perceiving neutral as negative (SIGNIFICANT!!)
+cor.test(df_bysubject$totagg, df_bysubject$RMEneutralItemNegInacc_total) # r=0.19, p=0.04
+
+
+# Hypothesis 5 individual test
+#############################################################################
+H3 <- lm(RME_negativeAcc_total ~
+totagg*totalExplicitAggressionScore,data=df_bysubject)
+
+summary(H3)
+
+cor.test(df_bysubject$RME_negativeAcc_total, df_bysubject$totagg*df_bysubject$totalExplicitAggressionScore)
+# Interaction term FINAL: (r=-0.10, p=.30) (NOT SIG)
+
+ # Hypothesis 6 individual test
+#############################################################################
+H4 <- lm(RME_positiveAcc_total ~
+totagg*totalExplicitAggressionScore,data=df_bysubject)
+
+summary(H4) 
+
+cor.test(df_bysubject$RME_positiveAcc_total, df_bysubject$totagg*df_bysubject$totalExplicitAggressionScore)
+# Interaction term FINAL: (r=-0.17, p=.09) (NOT SIG)
+
+
+
+
+# RQ: Is the relationship between the implicit motive to aggress and deficits in mentalizing stronger when the implicit motive to aggress is studied as a single holistic motive versus when it is studied as three separate factors?
+##########################################################
+
+### NEW RQ1 CODE 03/06/21: ------------------------------------------
+
+# h1 as f1, f2, f3: -----------------
+cor.test(df_bysubject$RME_negativeAcc_total,df_bysubject$F1)
+# r=-0.10, p=0.27 (NOT SIG)
+cor.test(df_bysubject$RME_negativeAcc_total,df_bysubject$F2)
+# r= -0.02, p=0.86 (NOT SIG)
+cor.test(df_bysubject$RME_negativeAcc_total,df_bysubject$F3)
+# r= 0.01, p=0.95 (NOT SIG)         
+         
+
+# h2 as f1, f2, f3: -----------------
+cor.test(df_bysubject$RME_positiveAcc_total,df_bysubject$F1)
+# r=-0.11, p=0.26 (NOT SIG)
+cor.test(df_bysubject$RME_positiveAcc_total,df_bysubject$F2)
+# r= -0.16, p=0.10 (NOT SIG)
+cor.test(df_bysubject$RME_positiveAcc_total,df_bysubject$F3)
+# r= -0.06, p=0.50 (NOT SIG)  
+
+# h3 as f1, f2, f3: -----------------
+cor.test(df_bysubject$RME_neutralAcc_total,df_bysubject$F1)
+# r=-0.05, p=0.59 (NOT SIG)
+cor.test(df_bysubject$RME_neutralAcc_total,df_bysubject$F2)
+# r= -0.10, p=0.29 (NOT SIG)
+cor.test(df_bysubject$RME_neutralAcc_total,df_bysubject$F3)
+# r= -0.01, p=0.93 (NOT SIG)  
+
+# h4 as f1, f2, f3: -----------------
+cor.test(df_bysubject$RMEneutralItemNegInacc_total,df_bysubject$F1)
+# r=0.11, p=0.23  (NOT SIG)
+cor.test(df_bysubject$RMEneutralItemNegInacc_total,df_bysubject$F2)
+# r= -0.10, p=0.02 (HELL YEAH WE GOT A SIGNIFICANT COEFFICIENT)
+cor.test(df_bysubject$RMEneutralItemNegInacc_total,df_bysubject$F3)
+# r= 0.06, p=0.51 (NOT SIG)  
+
+
+# is totagg related to selection of F1, F2, F3 words on RME? ----------
+
+# 1) totagg ~ selection of RME words consistent with F1 ext JMs
+cor.test(df_bysubject$totagg, df_bysubject$RME_externalizing_total)
+    # r=0.09, p=0.36 (NOT SIG)
+# 2) totagg ~ selection of RME words consistent with F2 int JMs
+cor.test(df_bysubject$totagg, df_bysubject$RME_internalizing_total)
+    # r=0.16, p=0.09 (NOT SIG)
+# 3) totagg ~ selection of RME words consistent with F3 pw JMs
+cor.test(df_bysubject$totagg, df_bysubject$RME_powerlessness_total)
+    # r=-0.11, p=0.27 (NOT SIG)
+
+# is explicit MTA related to selection of F1, F2, F3 words on RME? ----
+
+# 1) totagg ~ selection of RME words consistent with F1 ext JMs
+cor.test(df_bysubject$totalExplicitAggressionScore, df_bysubject$RME_externalizing_total)
+    # r=0.01, p=0.89 (NOT SIG)
+# 2) totagg ~ selection of RME words consistent with F2 int JMs
+cor.test(df_bysubject$totalExplicitAggressionScore, df_bysubject$RME_internalizing_total)
+    # r=-0.11, p=0.25 (NOT SIG)
+# 3) totagg ~ selection of RME words consistent with F3 pw JMs
+cor.test(df_bysubject$totalExplicitAggressionScore, df_bysubject$RME_powerlessness_total)
+    # r=0.03, p=0.74 (NOT SIG)
+
+
+
+
+
+
+### Old rq1 code
+# ALL EXTERNALIZING JMS, overall RME accuracy: NOT SIG
+cor.test(df_bysubject$TotalAcc,df_bysubject$RME_externalizing_total) 
+# STRONG EXTERNALIZING JMS, overall RME accuracy: SIG (r=0.49, p<.0001)
+cor.test(df_bysubject$TotalAcc,df_bysubject$RME_externalizing_total_STRONGlist) 
+# ALL INTERNALIZING JMS, overall RME accuracy: SIG (r=-0.31, p=0.001)
+cor.test(df_bysubject$TotalAcc,df_bysubject$RME_internalizing_total) 
+# STRONG INTERNALIZING JMS, overall RME accuracy: SIG (r=-0.35, p<.001)
+cor.test(df_bysubject$TotalAcc,df_bysubject$RME_internalizing_total_STRONGlist) 
+# ALL POWERLESSNESS JMS, ACCURACY overall RME accuracy: NOT SIG
+cor.test(df_bysubject$TotalAcc,df_bysubject$RME_powerlessness_total) 
+
+# ALL EXTERNALIZING JMS, accuracy selecting negative faces: SIG (r=0.36, p<.001)
+cor.test(df_bysubject$RME_negativeAcc_total,df_bysubject$RME_externalizing_total) 
+# STRONG EXTERNALIZING JMS, accuracy selecting negative faces: SIG (r=0.75, p<.001)
+cor.test(df_bysubject$RME_negativeAcc_total,df_bysubject$RME_externalizing_total_STRONGlist) 
+# ALL INTERNALIZING JMS, ACCURACY SELECTING NEGATIVE FACES: NOT SIG
+cor.test(df_bysubject$RME_negativeAcc_total,df_bysubject$RME_internalizing_total) 
+# STRONG INTERNALIZING JMS, ACCURACY SELECTING NEGATIVE FACES: SIG  (r=-0.20, p=0.03)
+cor.test(df_bysubject$RME_negativeAcc_total,df_bysubject$RME_internalizing_total_STRONGlist) 
+# ALL POWERLESSNESS JMS, ACCURACY SELECTING NEGATIVE FACES: SIG (r=0.29, p=0.003)
+cor.test(df_bysubject$RME_negativeAcc_total,df_bysubject$RME_powerlessness_total) 
+
+# ALL EXTERNALIZING JMS, accuracy selecting POSITIVE faces: NOT SIG
+cor.test(df_bysubject$RME_positiveAcc_total,df_bysubject$RME_externalizing_total) 
+# STRONG EXTERNALIZING JMS, accuracy selecting POSITIVE faces: SIG (r=0.37, p<.0001)
+cor.test(df_bysubject$RME_positiveAcc_total,df_bysubject$RME_externalizing_total_STRONGlist) 
+# ALL INTERNALIZING JMS, ACCURACY SELECTING POSITIVE FACES: NOT SIG
+cor.test(df_bysubject$RME_positiveAcc_total,df_bysubject$RME_internalizing_total) 
+# STRONG INTERNALIZING JMS, ACCURACY SELECTING POSITIVE FACES: SIG (r=-0.31, p=0.001)
+cor.test(df_bysubject$RME_positiveAcc_total,df_bysubject$RME_internalizing_total_STRONGlist) 
+# ALL POWERLESSNESS JMS, ACCURACY SELECTING POSITIVE FACES: SIG (r=0.27, p=0.005)
+cor.test(df_bysubject$RME_positiveAcc_total,df_bysubject$RME_powerlessness_total) 
+
+# ALL EXTERNALIZING JMS, accuracy selecting NEUTRAL faces: SIG (r=0.23, p=0.02)
+cor.test(df_bysubject$RME_neutralAcc_total,df_bysubject$RME_externalizing_total) 
+# STRONG EXTERNALIZING JMS, accuracy selecting NEUTRAL faces: SIG (r=0.62, p<.0001)
+cor.test(df_bysubject$RME_neutralAcc_total,df_bysubject$RME_externalizing_total_STRONGlist) 
+# ALL INTERNALIZING JMS, ACCURACY SELECTING NEUTRAL FACES: NOT SIG
+cor.test(df_bysubject$RME_neutralAcc_total,df_bysubject$RME_internalizing_total) 
+# STRONG INTERNALIZING JMS, ACCURACY SELECTING NEUTRAL FACES: SIG (r=-0.20, p=0.04)
+cor.test(df_bysubject$RME_neutralAcc_total,df_bysubject$RME_internalizing_total_STRONGlist) 
+# ALL POWERLESSNESS JMS, ACCURACY SELECTING NEUTRAL FACES: SIG (r=0.26, p=0.01)
+cor.test(df_bysubject$RME_neutralAcc_total,df_bysubject$RME_powerlessness_total) 
+
+
+
+
+
+# Threat detection analyses (exploratory)
+#############################################################################
+cor.test(df_bysubject$RMEThreatScore_total,df_bysubject$totagg) # regress totagg on RME threat-word score
+# r=0.16, p=0.09 (NOT SIG)
+
+```
+
+New correlation table (03/06/2021)
+```{r}
+# install.packages("Hmisc")
+library(Hmisc)
+library(xtable)
+# (get corstars function)
+corstars <-function(x, method=c("pearson", "spearman"), removeTriangle=c("upper", "lower"),
+                     result=c("none", "html", "latex"))
+
+names(df_bysubject)
+# 4, 7:10, 14:16, 19, 20, 25:27
+
+cortabledf <- df_bysubject[c(4, 7:12, 14:16, 25:27)]
+names(cortabledf)
+head(cortabledf)
+cortabledf <- na.omit(cortabledf)
+cortabledf <- sapply(cortabledf, as.numeric)
+
+# Full correlation table:
+cortable <- round(cor(cortabledf),2)
+cortable
+
+# Hide upper triangle of table:
+upper <- cortable
+upper[upper.tri(cortable)]<-""
+upper<-as.data.frame(upper)
+upper
+#corstars(cortabledf, result="html")
+#corstars(cortable)
+
+# add in the significance levels:
+library(xtable)
+library(rstatix)
+
+
+mycor <- rcorr(as.matrix(cortabledf), type="pearson")
+mycor$r # (gives correlation matrix)
+cortablepvals <- mycor$P # (gives corresponding p-values)
+cortablepvals
+
+
+```
+
+Significant results according to correlation table:
+```{r}
+# implicit mta and perceiving neutral as negative
+cor.test(df_bysubject$totagg, df_bysubject$RMEneutralItemNegInacc_total) # r=0.19, p=0.04
+
+
+```
+
+
+
+
+
+
+
+
+
+
+
+
+
+
+
+
+
+# Correlation Table 1
+```{r}
+# new df with only variables we want in correlation table
+names(df_bysubject)
+df_bysubject2 <- df_bysubject[,c(4,
+                                 7:24)] 
+head(df_bysubject2)
+
+df2=as.data.frame(sapply(df_bysubject2, as.numeric))
+
+df_bysubject2.cor = cor(df2, method=c("spearman"))
+df_bysubject2.cor # filled in Table 1 with values from here
+
+# to get means and SDs for each variable in correlation Table 1
+describe(df_bysubject2)
+
+# Full correlation table:
+newcortable <- cor(df2, method=c("pearson", "kendall", "spearman"))
+newcortable
+
+newcortable <- round(newcortable, 2)
+
+upper <- newcortable
+upper[upper.tri(newcortable)] <- ""
+upper <- as.data.frame(upper)
+upper
+
+# APA format
+# install.packages("apaTables")
+table1 <- apa.cor.table(df2, filename=NA, table.number=1)
+table1 
+```
+
+Plots
+```{r}
+# H1a
+H1aplot <- ggplot(df_bysubject, aes(totagg, RME_negativeAcc_total))+
+  geom_jitter() + 
+  geom_smooth(method="lm") +
+  theme_bw() +
+  xlim(0,10) + # max totagg score is 10
+  ylim(0,10) + # max RME-negativeAcc score is 8 
+  labs(x="CRT-A Score", y="Accuracy Detecting Negative Faces (RME)", title="Hypothesis 1a Plot")
+H1aplot
+
+# H1b
+H1bplot <- ggplot(df_bysubject, aes(totagg, RME_positiveAcc_total))+
+  geom_jitter() + 
+  geom_smooth(method="lm") +
+  theme_bw() +
+  xlim(0,10) + # max totagg score is 10
+  ylim(0,10) + # max RME-positiveAcc score is 6 
+  labs(x="CRT-A Score", y="Accuracy Detecting Positive Faces (RME)", title="Hypothesis 1b Plot")
+H1bplot
+
+# H1c
+H1cplot <- ggplot(df_bysubject, aes(totagg, RME_neutralAcc_total)) +
+  geom_jitter() + 
+  geom_smooth(method="lm") +
+  theme_bw() +
+  xlim(0,10) +
+  ylim(0,28) + # max score is 28
+  labs(x="CRT-A Score", y="Accuracy Detecting Neutral Faces (RME)", title="Hypothesis 1c Plot")
+H1cplot
+
+# H2
+H2plot <- ggplot(df_bysubject, aes(totagg, RMEneutralItemNegInacc_total)) +
+  geom_jitter() + 
+  geom_smooth(method="lm") +
+  theme_bw() +
+  xlim(0,10) +
+  ylim(0,6) + # max score is 5
+  labs(x="CRT-A Score", y="Detection of Negative Emotions in Neutral Faces (RME)", title="Hypothesis 2 Plot")
+H2plot
+
+
+# H3
+H3plot <- 
+  ggplot(df_bysubject) +
+  aes(x=totagg, y=RME_negativeAcc_total, color=totalExplicitAggressionScore) +
+  geom_jitter() +
+  geom_smooth(method="lm")
+H3plot
+
+# With CRTA trichotomy variable
+H3plot2 <- 
+  ggplot(df_bysubject) +
+  aes(x=totalExplicitAggressionScore, y=RME_negativeAcc_total, color=trichot_CRTA) +
+  geom_point() +
+  geom_smooth(method="lm")
+H3plot2 # this isn't a very good visualization of the interaction effect 
+
+
+CRTA_trichot_low <- filter(df_bysubject, totagg<4)
+CRTA_trichot_med <- filter(df_bysubject, totagg>3, totagg<9)
+CRTA_trichot_high <- filter(df_bysubject, totagg>8)
+
+newH3plot2 <- 
+  ggplot(df_bysubject) +
+  aes(x=totalExplicitAggressionScore, y=RME_negativeAcc_total, color=totagg) +
+  geom_point() +
+  geom_smooth(method="lm", data=CRTA_trichot_low) +
+  geom_smooth(method="lm", data=CRTA_trichot_med) +
+  geom_smooth(method="lm", data=CRTA_trichot_high)
+newH3plot2 
+
+
+# With CRTA dichotomy variable
+H3plot3 <- 
+  ggplot(df_bysubject) +
+  aes(x=totalExplicitAggressionScore, y=RME_negativeAcc_total, color=dichot_CRTA) +
+  geom_point() +
+  geom_smooth(method="lm")
+H3plot3
+
+
+# H4
+H4plot <- 
+  ggplot(df_bysubject) +
+  aes(x=totagg, y=RME_positiveAcc_total, color=totalExplicitAggressionScore) +
+  geom_jitter() +
+  geom_smooth(method="lm")
+H4plot
+
+
+newH4plot <- 
+  ggplot(df_bysubject) +
+  aes(x=totalExplicitAggressionScore, y=RME_positiveAcc_total, color=totagg) +
+  geom_point() +
+  geom_smooth(method="lm", data=CRTA_trichot_low) +
+  geom_smooth(method="lm", data=CRTA_trichot_med) +
+  geom_smooth(method="lm", data=CRTA_trichot_high)
+newH4plot 
+
+
+# Threat analyses
+threatplot <- 
+  ggplot(df_bysubject, aes(x=totagg, y=RMEThreatScore_total)) +
+  geom_jitter() + 
+  geom_smooth(method="lm") +
+  theme_bw() +
+  xlim(0,10) +
+  ylim(0,10) + # max score is 8
+  labs(x="CRT-A Score", y="Selection of Threat Word to Describe Face", title="Threat Detection in Faces")
+threatplot
+
+
+threatplot_withAggInteractionTerm <- 
+  ggplot(df_bysubject, aes(x=totalExplicitAggressionScore, y=RMEThreatScore_total, color=trichot_CRTA)) +
+  geom_jitter() + 
+  geom_smooth(method="lm") +
+  theme_bw() +
+  xlim(0,100) + # score range is 11-97
+  ylim(0,15) + # max score is 12
+  labs(x="Self-Report Aggression", y="Selection of Threat Word to Describe Face", title="Threat Detection in Faces")
+threatplot_withAggInteractionTerm 
+```
+
+
+
+EFA and alphsa/omega values for post-hoc self-report measure of aggression 11.25.2020
+```{r}
+library(psych)
+
+names(DirectAgg_df)
+str(DirectAgg_df) 
+# need all columns to be numeric
+DirectAgg_df[] <- sapply(DirectAgg_df, as.numeric)
+str(DirectAgg_df)
+
+
+############  omega: estimates general factor saturation of a test (notation: wh) ################
+## Revelle and Condon (2019) suggest that one should routinely report 3 estimates of internal consistency (ωh, α, and ωt) 
+newDAF <- DirectAgg_df[c("rtiq06", "msibpdq09", "msibpdq10", "pclq15", "alsq01", "alsq02", "alsq03", "alsq04", "alsq05", "alsq06", "alsq07")]
+omega(newDAF)
+newDAF <- (newDAF, na.rm=TRUE)
+describe(newDAF)
+lowerCor(newDAF)
+
+# calculate alpha and omega for a data set
+#install.packages("coefficientalpha")
+library(coefficientalpha)
+
+alpha(newDAF)
+newDAF2 <- newDAF[complete.cases(newDAF), ]
+str(newDAF2)
+alpha(newDAF2, varphi = 0.1, se=FALSE, test=TRUE,
+      complete=FALSE, auxiliary=NULL, silent=TRUE)
+#Error in solve.default(Abeta) : system is computationally singular: reciprocal condition number = 4.11147e-20
+
+omega(newDAF2)
+
+```
+
+DATA SCREENING STUFF
+```{r}
+library(dplyr)
+library(broom)
+library(ggpubr)
+
+# test for normality of the data (visual) ----------------------------
+ggplot(df_bysubject, aes(totagg, TotalAcc)) + geom_point()
+
+densityplot <- ggdensity(df_bysubject$totagg, 
+          main="Density plot of MTA",
+          xlab="Implicit MTA")
+densityplot # looks pretty normal
+
+qqplot <- ggqqplot(df_bysubject$totagg) #draws correlation between sample and normal distribution
+qqplot
+
+
+# Shapiro-Wilk method for statistical normality test ------------------
+shapiro.test(df_bysubject$totagg) 
+    # W = 0.97
+    # p=0.01, indicates the distribution is sig dif from normal distribution (so we can't assume normality)
+
+
+# outlier detection --------------------------------
+summary(df_bysubject$totagg) # min=0, med=4, mean=4.3, max=10
+hist(df_bysubject$totagg,
+     xlab="totagg",
+     main="Histogram of MTA scores",
+     breaks=sqrt(nrow(df_bysubject))) # more lower scores than in upper tail
+
+
+# outlier function from https://www.r-bloggers.com/2016/04/identify-describe-plot-and-remove-the-outliers-from-the-dataset/  ------
+outlierKD <- function(dt, var) {
+     var_name <- eval(substitute(var),eval(dt))
+     na1 <- sum(is.na(var_name))
+     m1 <- mean(var_name, na.rm = T)
+     par(mfrow=c(2, 2), oma=c(0,0,3,0))
+     boxplot(var_name, main="With outliers")
+     hist(var_name, main="With outliers", xlab=NA, ylab=NA)
+     outlier <- boxplot.stats(var_name)$out
+     mo <- mean(outlier)
+     var_name <- ifelse(var_name %in% outlier, NA, var_name)
+     boxplot(var_name, main="Without outliers")
+     hist(var_name, main="Without outliers", xlab=NA, ylab=NA)
+     title("Outlier Check", outer=TRUE)
+     na2 <- sum(is.na(var_name))
+     cat("Outliers identified:", na2 - na1, "n")
+     cat("Propotion (%) of outliers:", round((na2 - na1) / sum(!is.na(var_name))*100, 1), "n")
+     cat("Mean of the outliers:", round(mo, 2), "n")
+     m2 <- mean(var_name, na.rm = T)
+     cat("Mean without removing outliers:", round(m1, 2), "n")
+     cat("Mean if we remove outliers:", round(m2, 2), "n")
+     response <- readline(prompt="Do you want to remove outliers and to replace with NA? [yes/no]: ")
+     if(response == "y" | response == "yes"){
+          dt[as.character(substitute(var))] <- invisible(var_name)
+          assign(as.character(as.list(match.call())$dt), dt, envir = .GlobalEnv)
+          cat("Outliers successfully removed", "n")
+          return(invisible(dt))
+     } else{
+          cat("Nothing changed", "n")
+          return(invisible(var_name))
+     }
+}
+
+source("http://goo.gl/UUyEzD")
+
+outlierKD(df_bysubject, totagg)
+  # 0 outliers from 119observations
+  # Nothing changes
+
+
+# cooks distance -----------------------------------------
+library(car)
+#find Cook's distance for each observation in the dataset
+cooksdmodel <- lm(TotalAcc~totagg, data=df_bysubject)
+cooksD <- cooks.distance(cooksdmodel)
+# Plot Cook's Distance with a horizontal line at 4/n to see which observations
+#exceed this thresdhold
+n <- nrow(df_bysubject)
+plot(cooksD, main = "Cooks Distance for all Obs")
+abline(h = 4/n, lty = 2, col = "steelblue") # add cutoff line
+
+```
+
+
