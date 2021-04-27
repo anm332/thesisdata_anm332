@@ -1,0 +1,146 @@
+---
+title: "RME Scoring"
+author: "Benjamin N. Johnson"
+date: "4/3/2020"
+output: html_document
+---
+
+```{r setup, include=FALSE}
+knitr::opts_chunk$set(echo = TRUE)
+```
+
+Note that this code only scores the RME task.  The BDI, STAI, and PANAS are not scored.  Please contact bnjohnson.psych@gmail.com for help with further scoring of self-reports. 
+
+# Packages
+```{r,echo=F,warnings=F}
+library(tidyverse)
+```
+# Reading data
+
+```{r}
+rme1<-read.csv("Fall 2016.csv",head=T)
+rme2<-read.csv("Fall 2017.csv",head=T)
+#continue for as many files as needed
+
+```
+
+# Merging data
+```{r}
+#first confirm variables are consistent
+ifelse(names(rme1)==names(rme2),"Good to go", "Variables are not identical")
+
+RMEdata<-rbind(rme1,rme2)
+#RMEdata<-rbind(RMEdata, rme3))
+#etc.
+```
+
+# Cleaning data
+```{r}
+#Cutting all vars but RME
+RMEdata_only<-RMEdata%>%dplyr::filter(`Procedure.Block.`=="RME")
+
+#cutting all participants without full RME data (36 items)
+temp<-RMEdata_only%>%group_by(Subject)%>%mutate(rownum=sum(Session))%>%ungroup(.)
+RMEdata_only<-temp[which(temp$rownum==36),]
+rm(temp)
+```
+
+# Scoring data
+
+```{r}
+#scoring total accuracy per participant
+RMEdata_only<-RMEdata_only%>%group_by(Subject)%>%mutate(TotalAcc=sum(RMEStim.ACC))%>%ungroup()
+RMEdata_only$TotalAccProp<-RMEdata_only$TotalAcc/36
+
+#function for subsets below
+RMEsubsetscorer<-function(ItemList){
+  data<-RMEdata_only%>%filter(RMETrialList %in% ItemList)
+  data<-data%>%group_by(Subject)%>%mutate(SubAcc=sum(RMEStim.ACC))%>%ungroup()%>%select(c("Subject","SubAcc"))%>%unique()
+  RMEdata_only<-left_join(RMEdata_only,data,"Subject")
+  RMEdata_only
+}
+
+#valence accuracy (see Harkness et al. (2005))
+NegList<-c(2,5,11,14,17,22,23,26,27,34,35,36)
+PosList<-c(1,6,16,20,21,25,30,31)
+NeutList<-c(3,4,7,8,9,10,12,13,15,18,19,24,28,29,32,33)
+
+RMEdata_only<-RMEsubsetscorer(NegList)
+RMEdata_only$NegAcc<-RMEdata_only$SubAcc
+RMEdata_only<-select(RMEdata_only,-SubAcc)
+RMEdata_only$NegAccProp<-RMEdata_only$NegAcc/length(NegList)
+
+RMEdata_only<-RMEsubsetscorer(PosList)
+RMEdata_only$PosAcc<-RMEdata_only$SubAcc
+RMEdata_only<-select(RMEdata_only,-SubAcc)
+RMEdata_only$PosAccProp<-RMEdata_only$PosAcc/length(PosList)
+
+RMEdata_only<-RMEsubsetscorer(NeutList)
+RMEdata_only$NeutAcc<-RMEdata_only$SubAcc
+RMEdata_only<-select(RMEdata_only,-SubAcc)
+RMEdata_only$NeutAccProp<-RMEdata_only$NeutAcc/length(NeutList)
+
+#difficulty accuracy (not sure where these come from (see "RME acc difficulty easy hard v2.sps"), email wesscala@gmail.com for further questions.)
+EasyList<-c(1,2,3,4,5,6,7,8,9,11,12,13,15,18,20,21,22,24,26,28,29,30,31,32,36)
+HardList<-c(10,14,16,17,19,23,25,27,33,34,35)
+Hardno23List<-c(10,14,16,17,19,25,27,33,34,35)
+
+RMEdata_only<-RMEsubsetscorer(EasyList)
+RMEdata_only$EasyAcc<-RMEdata_only$SubAcc
+RMEdata_only<-select(RMEdata_only,-SubAcc)
+RMEdata_only$EasyAccProp<-RMEdata_only$EasyAcc/length(EasyList)
+
+RMEdata_only<-RMEsubsetscorer(HardList)
+RMEdata_only$HardAcc<-RMEdata_only$SubAcc
+RMEdata_only<-select(RMEdata_only,-SubAcc)
+RMEdata_only$HardAccProp<-RMEdata_only$HardAcc/length(HardList)
+
+RMEdata_only<-RMEsubsetscorer(Hardno23List)
+RMEdata_only$Hardno23Acc<-RMEdata_only$SubAcc
+RMEdata_only<-select(RMEdata_only,-SubAcc)
+RMEdata_only$Hardno23AccProp<-RMEdata_only$Hardno23Acc/length(Hardno23List)
+
+#scoring average RT (in ms)
+RMEdata_only<-RMEdata_only%>%group_by(Subject)%>%mutate(RTAvg=mean(RMEStim.RT))%>%ungroup()
+
+RMEdata_only
+
+
+```
+
+# Casting
+
+```{r}
+#converting long to wide format for only summary data
+# This puts each row w a separate subject
+# At this point we should be able to merge with CRT-A
+RMEdata_summary<-RMEdata_only%>%select(c("Subject","Group","Initials","SessionDate","SessionTime","TotalAcc","PosAcc","PosAccProp","NegAcc","NegAccProp","NeutAcc","NeutAccProp",
+                                         "EasyAcc","EasyAccProp","HardAcc","HardAccProp","Hardno23Acc","Hardno23AccProp","RTAvg"))
+RMEdata_summary<-unique(RMEdata_summary)
+
+RMEdata_summary
+```
+
+
+# Checking
+```{r}
+#correlation between Acc and RT should be positive (i.e., longer time = more accuracy)
+cor.test(RMEdata_summary$TotalAcc,RMEdata_summary$RTAvg)
+
+#hard item scores should, on average, be less (negative result) than easy
+mean(RMEdata_summary$HardAccProp-RMEdata_summary$EasyAccProp)
+
+#hard item scores with 23 should, on average, be greater (positive result) than hard item scores without
+mean(RMEdata_summary$HardAcc-RMEdata_summary$Hardno23Acc)
+```
+
+Checks out.
+
+## James: We need to know stimulus #, four adjectives, . . . Need to find a way to figure out what the correct answer was
+
+## Is there anything normative for reaction time on RME?
+
+## Next week:
+# Check w Ben about explicit aggression q, verify, ask about facets of other self-reports (do u have scoring keys or facet level info on any of those?)
+# Try to get various RME data files read in, merged into one master RME data file
+# Merge that with CRT data
